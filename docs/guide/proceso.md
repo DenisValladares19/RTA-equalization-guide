@@ -7,6 +7,8 @@
 4. **Ajusta el nivel**: sube o baja el volumen del sistema (o mueve la guía con ▲ / ▼, o pulsa
    *Fijar guía al nivel actual*) hasta que los medios (500 Hz–2 kHz) caigan dentro de la banda.
 5. **Mide en varias posiciones** y activa el *promedio espacial*.
+   La escala va por defecto de 0 a −90 dBFS. **Arrastra el gráfico** arriba/abajo para moverla,
+   **pellizca** para ampliarla o reducirla, o pulsa *Autoescala* para encuadrar espectro y guía.
 6. **Compara la línea con la banda verde**: donde la línea se sale por arriba, sobra; por debajo, falta.
    Toca el espectro para ver la frecuencia exacta, su nivel y la diferencia con la guía.
 7. **Ecualiza** en tu mesa o procesador: recorta primero los picos, realza poco.

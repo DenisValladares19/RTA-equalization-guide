@@ -407,6 +407,30 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
 
     fun setSplOffset(offset: Double?) = updateSettings { it.copy(splOffsetDb = offset) }
 
+    // ---------------------------------------------------------------- vertical scale
+
+    /** Drag (pan, dB) and pinch (zoom factor) on the chart: moves / scales the dB window around its center. */
+    fun panZoomScale(deltaDb: Double, zoom: Float) = updateSettings {
+        val range = (it.yRangeDb / zoom).coerceIn(20.0, 140.0)
+        val center = it.yTopDb - it.yRangeDb / 2 + deltaDb
+        it.copy(yTopDb = (center + range / 2).coerceIn(-100.0, 40.0), yRangeDb = range)
+    }
+
+    /** Frames both the measurement and the whole guide, with a margin above and below. */
+    fun autoScale() {
+        val st = _state.value
+        val measured = st.measuredDb ?: return message("Aún no hay medición.")
+        val s = st.settings
+        val offset = st.displayOffsetDb
+        val guideMax = guideAnchor(s) + (st.curve.gainsDb.maxOrNull() ?: 0.0) - st.curve.gainAt(st.curve.referenceHz) +
+            (s.toleranceDb ?: st.curve.toleranceDb)
+        val hi = maxOf(measured.maxOrNull() ?: 0.0, if (s.showSilhouette) guideMax else Double.NEGATIVE_INFINITY) + 6 - offset
+        val lo = (measured.filter { it > -150 }.minOrNull() ?: (hi - 60)) - 6 - offset
+        val top = kotlin.math.ceil(hi / 5) * 5
+        val range = (kotlin.math.ceil((top - lo) / 10) * 10).coerceIn(40.0, 140.0)
+        updateSettings { it.copy(yTopDb = top, yRangeDb = range) }
+    }
+
     // ---------------------------------------------------------------- guide level
 
     /** Guide anchor in display units (dB SPL when calibrated) for the current band resolution. */

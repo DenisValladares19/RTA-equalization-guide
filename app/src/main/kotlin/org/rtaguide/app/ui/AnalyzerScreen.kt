@@ -78,7 +78,7 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
     if (state.chartFullscreen) {
         // Full screen: only the spectrum (and the selected band), maximum space.
         Box(Modifier.fillMaxSize()) {
-            RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+            RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap, onPanZoom = vm::panZoomScale)
             Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(6.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 FilledTonalButton(onClick = vm::toggleFullscreen) { Text("Salir de pantalla completa") }
                 Text(state.curve.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -144,7 +144,7 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
 @Composable
 private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, selected: Int?, onTap: (Int?) -> Unit, modifier: Modifier) {
     Box(modifier) {
-        RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+        RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap, onPanZoom = vm::panZoomScale)
         TextButton(onClick = vm::toggleFullscreen, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
             Text("⤢ Ampliar")
         }
@@ -233,11 +233,7 @@ private fun SecondaryControls(state: UiState, vm: AnalyzerViewModel) {
         OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
         OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
     }
-    OutlinedButton(onClick = {
-        val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
-        val top = ceil((max - state.displayOffsetDb + 6) / 5) * 5
-        vm.updateSettings { it.copy(yTopDb = top) }
-    }) { Text("Autoescala") }
+    OutlinedButton(onClick = vm::autoScale) { Text("Autoescala") }
 }
 
 /** Guide (silhouette) level: fixed, adjustable in 1 dB steps or placed once on the measurement. */

@@ -66,8 +66,8 @@ data class AppSettings(
     val showPreview: Boolean = false,
     val previewSource: String = PreviewSource.GRAPHIC.name,
     val feedbackDetection: Boolean = false,
-    val yTopDb: Double = -10.0,
-    val yRangeDb: Double = 45.0,
+    val yTopDb: Double = 0.0,
+    val yRangeDb: Double = 90.0,
     val pinkNoiseLevelDb: Double = -12.0,
     val keepScreenOn: Boolean = true,
 ) {
@@ -96,7 +96,7 @@ data class AppSettings(
         fftSize != other.fftSize || decimations != other.decimations || bandsPerOctave != other.bandsPerOctave
 }
 
-const val CURRENT_SETTINGS_VERSION = 2
+const val CURRENT_SETTINGS_VERSION = 3
 
 private inline fun <reified T : Enum<T>> enumOr(name: String, default: T): T =
     runCatching { enumValueOf<T>(name) }.getOrDefault(default)

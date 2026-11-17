@@ -75,8 +75,8 @@ fun SettingsScreen(state: UiState, vm: AnalyzerViewModel) {
                 "Barras + silueta: barras de colores por banda; usa el nivel superior y el rango de abajo.",
             style = MaterialTheme.typography.bodySmall,
         )
-        SliderRow("Nivel superior", s.yTopDb, -80.0..20.0, 5.0, { "%.0f dB".format(it + state.displayOffsetDb) }) { v -> update { it.copy(yTopDb = v) } }
-        SliderRow("Rango vertical", s.yRangeDb, 20.0..120.0, 5.0, { "%.0f dB".format(it) }) { v -> update { it.copy(yRangeDb = v) } }
+        SliderRow("Nivel superior", s.yTopDb, -100.0..40.0, 5.0, { "%.0f dB".format(it + state.displayOffsetDb) }) { v -> update { it.copy(yTopDb = v) } }
+        SliderRow("Rango vertical", s.yRangeDb, 20.0..140.0, 5.0, { "%.0f dB".format(it) }) { v -> update { it.copy(yRangeDb = v) } }
         SwitchRow("Mantener pantalla encendida", s.keepScreenOn, { v -> update { it.copy(keepScreenOn = v) } })
 
         SectionTitle("Guía (silueta)")

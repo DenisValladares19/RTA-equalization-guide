@@ -17,8 +17,8 @@ class SettingsStore(context: Context) {
             ?.let { runCatching { json.decodeFromString(AppSettings.serializer(), it) }.getOrNull() }
             ?: return AppSettings(settingsVersion = CURRENT_SETTINGS_VERSION)
         if (stored.settingsVersion >= CURRENT_SETTINGS_VERSION) return stored
-        // v2: absolute scale with the guide fixed at −25 dBFS; new default vertical window.
-        val migrated = stored.copy(yTopDb = -10.0, yRangeDb = 45.0, settingsVersion = CURRENT_SETTINGS_VERSION)
+        // v3: absolute scale, guide fixed at −25 dBFS, window 0 … −90 dBFS (room above the guide).
+        val migrated = stored.copy(yTopDb = 0.0, yRangeDb = 90.0, settingsVersion = CURRENT_SETTINGS_VERSION)
         save(migrated)
         return migrated
     }
