@@ -49,8 +49,13 @@ data class AppSettings(
     val curveId: String = BuiltInCurves.BASS_GUIDE.id,
     val toleranceDb: Double? = null,
     val alignment: Alignment = Alignment(),
-    /** Compare against the curve even when no broadband test signal is detected. */
-    val alwaysCompare: Boolean = false,
+    /**
+     * Fixed level (dBFS) where the guide's 0 dB point is drawn, expressed for third-octave bands.
+     * The guide no longer follows the measurement: you set the system volume to fit the spectrum in it.
+     */
+    val guideAnchorDb: Double = -25.0,
+    /** Bumped when defaults change in a way that must reach stored settings. */
+    val settingsVersion: Int = 0,
     val rules: EqRules = EqRules(),
     val graphicLayout: String = GraphicEqLayout.THIRTY_ONE.name,
     val maxParametricFilters: Int = 6,
@@ -61,8 +66,8 @@ data class AppSettings(
     val showPreview: Boolean = false,
     val previewSource: String = PreviewSource.GRAPHIC.name,
     val feedbackDetection: Boolean = false,
-    val yTopDb: Double = 0.0,
-    val yRangeDb: Double = 70.0,
+    val yTopDb: Double = -10.0,
+    val yRangeDb: Double = 45.0,
     val pinkNoiseLevelDb: Double = -12.0,
     val keepScreenOn: Boolean = true,
 ) {
@@ -77,12 +82,21 @@ data class AppSettings(
     /** Unit shown on screen: dB SPL once a calibration offset exists. */
     val unit: String get() = if (splOffsetDb != null) "dB SPL" else "dBFS"
 
+    /**
+     * Guide anchor for the current band resolution: narrower bands read lower for the same signal
+     * (−3 dB for 1/6, −6 dB for 1/12 octave), so the guide is shifted to stay on the spectrum.
+     */
+    val guideAnchorForBands: Double
+        get() = guideAnchorDb + 10.0 * kotlin.math.log10(3.0 / bandsPerOctave)
+
     fun needsCaptureRestart(other: AppSettings): Boolean =
         inputSource != other.inputSource || inputDeviceId != other.inputDeviceId || sampleRate != other.sampleRate
 
     fun needsEngineRebuild(other: AppSettings): Boolean =
         fftSize != other.fftSize || decimations != other.decimations || bandsPerOctave != other.bandsPerOctave
 }
+
+const val CURRENT_SETTINGS_VERSION = 2
 
 private inline fun <reified T : Enum<T>> enumOr(name: String, default: T): T =
     runCatching { enumValueOf<T>(name) }.getOrDefault(default)

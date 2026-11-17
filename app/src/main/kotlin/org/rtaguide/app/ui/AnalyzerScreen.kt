@@ -36,36 +36,32 @@ import org.rtaguide.app.AnalyzerViewModel
 import org.rtaguide.app.UiState
 import org.rtaguide.app.data.ChartStyle
 import org.rtaguide.dsp.AveragingMode
-import org.rtaguide.targets.CorrectionFlag
 import kotlin.math.ceil
 
 fun chartModelOf(state: UiState): ChartModel {
     val frame = state.frame
     val s = state.settings
-    // Guide view: everything relative to the aligned target (0 dB = curve at its reference), like
-    // the classic GEQ/RTA guide screens (−9 … +21 dB). Without a comparison (no test signal) the
-    // spectrum is shown on the absolute scale instead, like a plain analyzer.
-    val guide = s.chartStyleEnum == ChartStyle.GUIDE && state.comparison != null
-    val shift = if (guide) -(state.comparison?.offsetDb ?: 0.0) else 0.0
-    val offset = state.displayOffsetDb + shift
+    val offset = state.displayOffsetDb
     fun DoubleArray.shifted(by: Double) = DoubleArray(size) { this[it] + by }
+    // Absolute scale (dBFS, or dB SPL when calibrated). The guide sits at the fixed level chosen by
+    // the user; it does not follow the measurement.
     return ChartModel(
         bands = frame?.bands ?: emptyList(),
-        measuredDb = state.measuredDb?.shifted(shift),
+        measuredDb = state.measuredDb,
         statuses = state.comparison?.items?.map { it.status },
         curve = state.curve,
-        curveOffsetDb = if (guide) 0.0 else state.comparison?.offsetDb ?: (s.yTopDb - 20),
-        toleranceDb = state.comparison?.toleranceDb ?: state.curve.toleranceDb,
-        showSilhouette = s.showSilhouette && state.comparison != null,
+        curveOffsetDb = s.guideAnchorForBands + offset,
+        toleranceDb = s.toleranceDb ?: state.curve.toleranceDb,
+        showSilhouette = s.showSilhouette,
         fineHz = if (s.showFineSpectrum) frame?.fineHz else null,
         fineDb = if (s.showFineSpectrum) frame?.fineDb?.shifted(offset) else null,
         maxHoldDb = if (s.showMaxHold) frame?.maxHoldDb?.shifted(offset) else null,
-        referenceDb = state.referenceDb?.shifted(shift),
-        previewDb = state.previewDb?.shifted(shift),
+        referenceDb = state.referenceDb,
+        previewDb = null,
         feedbackHz = frame?.feedback?.map { it.frequencyHz } ?: emptyList(),
-        yTopDb = if (guide) GUIDE_TOP_DB else s.yTopDb + state.displayOffsetDb,
-        yRangeDb = if (guide) GUIDE_RANGE_DB else s.yRangeDb,
-        unit = if (guide) "dB rel." else s.unit,
+        yTopDb = s.yTopDb + offset,
+        yRangeDb = s.yRangeDb,
+        unit = s.unit,
         style = s.chartStyleEnum,
     )
 }
@@ -83,7 +79,6 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
         // Full screen: only the spectrum (and the selected band), maximum space.
         Box(Modifier.fillMaxSize()) {
             RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
-            NoSignalBanner(state, Modifier.align(androidx.compose.ui.Alignment.TopCenter))
             Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(6.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 FilledTonalButton(onClick = vm::toggleFullscreen) { Text("Salir de pantalla completa") }
                 Text(state.curve.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -108,6 +103,7 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
             ) {
                 Text("Guía (silueta)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 CurveChips(state, vm)
+                GuideLevel(state, vm)
                 Warnings(state)
                 Text("Medición", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 PrimaryControls(state, vm)
@@ -121,7 +117,14 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 CurveChips(state, vm)
             }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { Warnings(state) }
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                GuideLevel(state, vm)
+                Warnings(state)
+            }
             ChartWithZoom(state, vm, selected, onTap, Modifier.weight(1f).fillMaxWidth())
             BandInfo(state, selected)
             Row(
@@ -142,23 +145,10 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
 private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, selected: Int?, onTap: (Int?) -> Unit, modifier: Modifier) {
     Box(modifier) {
         RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
-        NoSignalBanner(state, Modifier.align(androidx.compose.ui.Alignment.TopCenter))
         TextButton(onClick = vm::toggleFullscreen, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
             Text("⤢ Ampliar")
         }
     }
-}
-
-@Composable
-private fun NoSignalBanner(state: UiState, modifier: Modifier) {
-    if (state.frame == null || state.testSignal || state.settings.alwaysCompare) return
-    Text(
-        "Sin señal de prueba · escala absoluta (${state.settings.unit})\nReproduce ruido rosa por el sistema para ver la guía",
-        modifier = modifier.padding(top = 6.dp),
-        style = MaterialTheme.typography.bodySmall,
-        color = StatusWarning,
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-    )
 }
 
 @Composable
@@ -168,7 +158,8 @@ private fun Header(state: UiState, compact: Boolean) {
     val cmp = state.comparison
     val summary = buildString {
         append(state.curve.name)
-        if (cmp != null) append("  ·  ${cmp.okCount}/${cmp.ratedCount} bandas en ±%.0f dB".format(cmp.toleranceDb))
+        append("  ·  guía en %.1f %s".format(state.settings.guideAnchorForBands + state.displayOffsetDb, state.settings.unit))
+        if (cmp != null && state.settings.showSilhouette) append("  ·  ${cmp.okCount}/${cmp.ratedCount} bandas dentro")
         if (state.useSpatial) append("  ·  promedio de ${state.spatialCount} posiciones")
         if (state.reference != null) append("  ·  comparando con \"${state.reference.name}\"")
     }
@@ -234,7 +225,6 @@ private fun SecondaryControls(state: UiState, vm: AnalyzerViewModel) {
         onSelect = { style -> vm.updateSettings { it.copy(chartStyle = style.name) } },
     )
     FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Mostrar guía") })
-    FilterChip(selected = s.showPreview, onClick = { vm.updateSettings { it.copy(showPreview = !it.showPreview) } }, label = { Text("Vista previa EQ") })
     FilterChip(selected = s.showFineSpectrum, onClick = { vm.updateSettings { it.copy(showFineSpectrum = !it.showFineSpectrum) } }, label = { Text("Línea FFT") })
     FilterChip(selected = s.showMaxHold, onClick = { vm.updateSettings { it.copy(showMaxHold = !it.showMaxHold) } }, label = { Text("Máximos") })
     OutlinedButton(onClick = vm::capturePosition) { Text("Capturar posición (${state.spatialCount})") }
@@ -243,31 +233,47 @@ private fun SecondaryControls(state: UiState, vm: AnalyzerViewModel) {
         OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
         OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
     }
-    if (s.chartStyleEnum == ChartStyle.SILHOUETTE) {
-        OutlinedButton(onClick = {
-            val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
-            val top = ceil((max - state.displayOffsetDb + 6) / 10) * 10
-            vm.updateSettings { it.copy(yTopDb = top) }
-        }) { Text("Autoescala") }
+    OutlinedButton(onClick = {
+        val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
+        val top = ceil((max - state.displayOffsetDb + 6) / 5) * 5
+        vm.updateSettings { it.copy(yTopDb = top) }
+    }) { Text("Autoescala") }
+}
+
+/** Guide (silhouette) level: fixed, adjustable in 1 dB steps or placed once on the measurement. */
+@Composable
+private fun GuideLevel(state: UiState, vm: AnalyzerViewModel) {
+    val level = state.settings.guideAnchorForBands + state.displayOffsetDb
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        OutlinedButton(onClick = { vm.nudgeGuide(-1.0) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) { Text("▼") }
+        Text(
+            "Guía %.1f".format(level),
+            modifier = Modifier.padding(horizontal = 6.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        OutlinedButton(onClick = { vm.nudgeGuide(1.0) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)) { Text("▲") }
     }
+    TextButton(onClick = vm::fitGuideToMeasurement) { Text("Fijar guía al nivel actual") }
 }
 
 @Composable
 private fun BandInfo(state: UiState, selected: Int?) {
-    val cmp = state.comparison
-    val sug = state.suggestion
-    val text = if (selected == null || cmp == null || sug == null || selected !in cmp.items.indices) {
-        "Toca una banda para ver cuánto subir o bajar."
+    val frame = state.frame
+    val measured = state.measuredDb
+    val unit = state.settings.unit
+    val text = if (selected == null || frame == null || measured == null || selected !in frame.bands.indices) {
+        "Toca el espectro para ver la frecuencia y su nivel."
     } else {
-        val c = cmp.items[selected]
-        val corr = sug.items[selected]
-        val action = when {
-            corr.flag == CorrectionFlag.NONE || corr.flag == CorrectionFlag.BOOST_LIMITED || corr.flag == CorrectionFlag.CUT_LIMITED ->
-                if (corr.correctionDb < 0) "bajar ${formatGain(-corr.correctionDb).removePrefix("+")}" else "subir ${formatGain(corr.correctionDb)}"
-            else -> corr.flag.message
-        }
-        "${c.band.label} Hz: medido %.1f, objetivo %.1f (%+.1f dB) → %s".format(c.measuredDb, c.targetDb, c.deviationDb, action) +
-            if (corr.flag == CorrectionFlag.BOOST_LIMITED || corr.flag == CorrectionFlag.CUT_LIMITED) " (${corr.flag.message.lowercase()})" else ""
+        val band = frame.bands[selected]
+        val range = "%s–%s Hz".format(
+            org.rtaguide.dsp.formatFrequency(band.lowHz), org.rtaguide.dsp.formatFrequency(band.highHz),
+        )
+        val level = measured[selected]
+        val base = "${band.label} Hz ($range): %.1f %s".format(level, unit)
+        val item = state.comparison?.items?.getOrNull(selected)
+        if (item == null || !state.settings.showSilhouette) base
+        else base + "  ·  guía %.1f %s (%+.1f dB)".format(item.targetDb, unit, item.deviationDb)
     }
     Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
 }

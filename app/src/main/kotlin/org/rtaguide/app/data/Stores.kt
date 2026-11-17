@@ -12,9 +12,16 @@ private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    fun load(): AppSettings = prefs.getString(KEY, null)
-        ?.let { runCatching { json.decodeFromString(AppSettings.serializer(), it) }.getOrNull() }
-        ?: AppSettings()
+    fun load(): AppSettings {
+        val stored = prefs.getString(KEY, null)
+            ?.let { runCatching { json.decodeFromString(AppSettings.serializer(), it) }.getOrNull() }
+            ?: return AppSettings(settingsVersion = CURRENT_SETTINGS_VERSION)
+        if (stored.settingsVersion >= CURRENT_SETTINGS_VERSION) return stored
+        // v2: absolute scale with the guide fixed at −25 dBFS; new default vertical window.
+        val migrated = stored.copy(yTopDb = -10.0, yRangeDb = 45.0, settingsVersion = CURRENT_SETTINGS_VERSION)
+        save(migrated)
+        return migrated
+    }
 
     fun save(settings: AppSettings) {
         prefs.edit().putString(KEY, json.encodeToString(AppSettings.serializer(), settings)).apply()

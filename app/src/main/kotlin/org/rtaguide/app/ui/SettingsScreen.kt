@@ -26,7 +26,6 @@ import org.rtaguide.app.data.InputSource
 import org.rtaguide.dsp.AveragingMode
 import org.rtaguide.dsp.Weighting
 import org.rtaguide.dsp.WindowFunction
-import org.rtaguide.targets.Alignment
 
 @Composable
 fun SettingsScreen(state: UiState, vm: AnalyzerViewModel) {
@@ -76,52 +75,23 @@ fun SettingsScreen(state: UiState, vm: AnalyzerViewModel) {
                 "Barras + silueta: barras de colores por banda; usa el nivel superior y el rango de abajo.",
             style = MaterialTheme.typography.bodySmall,
         )
-        SliderRow("Nivel superior", s.yTopDb, -60.0..140.0, 5.0, { "%.0f dB".format(it + state.displayOffsetDb) }) { v -> update { it.copy(yTopDb = v) } }
+        SliderRow("Nivel superior", s.yTopDb, -80.0..20.0, 5.0, { "%.0f dB".format(it + state.displayOffsetDb) }) { v -> update { it.copy(yTopDb = v) } }
         SliderRow("Rango vertical", s.yRangeDb, 20.0..120.0, 5.0, { "%.0f dB".format(it) }) { v -> update { it.copy(yRangeDb = v) } }
         SwitchRow("Mantener pantalla encendida", s.keepScreenOn, { v -> update { it.copy(keepScreenOn = v) } })
 
-        SectionTitle("Alineación de la curva objetivo")
-        OptionSelector("Modo", Alignment.Mode.entries.toList(), s.alignment.mode, { it.label }) { v ->
-            update { it.copy(alignment = it.alignment.copy(mode = v)) }
-        }
-        when (s.alignment.mode) {
-            Alignment.Mode.RANGE -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NumberField("Desde (Hz)", s.alignment.lowHz, { v -> if (v != null && v > 0) update { it.copy(alignment = it.alignment.copy(lowHz = v)) } }, Modifier.weight(1f))
-                NumberField("Hasta (Hz)", s.alignment.highHz, { v -> if (v != null && v > 0) update { it.copy(alignment = it.alignment.copy(highHz = v)) } }, Modifier.weight(1f))
-            }
-            Alignment.Mode.FREQUENCY ->
-                NumberField("Frecuencia (Hz)", s.alignment.frequencyHz, { v -> if (v != null && v > 0) update { it.copy(alignment = it.alignment.copy(frequencyHz = v)) } })
-            Alignment.Mode.MANUAL ->
-                NumberField("Desplazamiento (dB)", s.alignment.manualOffsetDb, { v -> if (v != null) update { it.copy(alignment = it.alignment.copy(manualOffsetDb = v)) } })
-        }
-        SwitchRow(
-            "Comparar aunque no haya señal de prueba",
-            s.alwaysCompare,
-            { v -> update { it.copy(alwaysCompare = v) } },
-            "Normalmente la guía solo aparece con ruido rosa sonando: el ruido ambiental tiene muchos graves y daría lecturas engañosas.",
+        SectionTitle("Guía (silueta)")
+        Text(
+            "La guía queda fija en este nivel (escala absoluta): sube o baja el volumen del sistema hasta que el espectro entre en la banda verde. " +
+                "El valor corresponde a bandas de 1/3 de octava; con 1/6 o 1/12 la app la compensa sola.",
+            style = MaterialTheme.typography.bodySmall,
         )
-        SliderRow("Tolerancia (0 = la de la curva)", s.toleranceDb ?: 0.0, 0.0..6.0, 0.5, {
+        SliderRow("Nivel de la guía (0 dB de la curva)", s.guideAnchorDb, -60.0..0.0, 0.5, { "%.1f dBFS".format(it) }) { v ->
+            update { it.copy(guideAnchorDb = v) }
+        }
+        OutlinedButton(onClick = vm::fitGuideToMeasurement) { Text("Fijar guía al nivel de la medición actual") }
+        SliderRow("Ancho de la banda (0 = el de la curva)", s.toleranceDb ?: 0.0, 0.0..6.0, 0.5, {
             if (it == 0.0) "±%.1f dB (curva)".format(state.curve.toleranceDb) else "±%.1f dB".format(it)
         }) { v -> update { it.copy(toleranceDb = v.takeIf { t -> t > 0 }) } }
-
-        SectionTitle("Reglas de ecualización")
-        SliderRow("Realce máximo", s.rules.maxBoostDb, 0.0..12.0, 0.5, { "+%.1f dB".format(it) }) { v -> update { it.copy(rules = it.rules.copy(maxBoostDb = v)) } }
-        SliderRow("Recorte máximo", s.rules.maxCutDb, 3.0..24.0, 0.5, { "−%.1f dB".format(it) }) { v -> update { it.copy(rules = it.rules.copy(maxCutDb = v)) } }
-        OptionSelector("No corregir por debajo de", listOf(20.0, 31.5, 40.0, 50.0, 63.0, 80.0, 100.0), s.rules.lowLimitHz, { "${it} Hz" }) { v ->
-            update { it.copy(rules = it.rules.copy(lowLimitHz = v)) }
-        }
-        OptionSelector("No corregir por encima de", listOf(8000.0, 10000.0, 12500.0, 16000.0, 20000.0), s.rules.highLimitHz, { "${(it / 1000)} kHz" }) { v ->
-            update { it.copy(rules = it.rules.copy(highLimitHz = v)) }
-        }
-        SliderRow("Profundidad para considerar cancelación", s.rules.nullDepthDb, 3.0..15.0, 1.0, { "%.0f dB".format(it) }) { v ->
-            update { it.copy(rules = it.rules.copy(nullDepthDb = v)) }
-        }
-        SliderRow("Ignorar diferencias menores de", s.rules.deadbandDb, 0.0..3.0, 0.5, { "%.1f dB".format(it) }) { v ->
-            update { it.copy(rules = it.rules.copy(deadbandDb = v)) }
-        }
-        OptionSelector("Redondeo", listOf(0.1, 0.5, 1.0), s.rules.roundingStepDb, { "$it dB" }) { v -> update { it.copy(rules = it.rules.copy(roundingStepDb = v)) } }
-        OptionSelector("Filtros paramétricos máximos", listOf(3, 4, 6, 8, 10), s.maxParametricFilters, { "$it" }) { v -> update { it.copy(maxParametricFilters = v) } }
-        SwitchRow("Suavizar bandas finas (1/6, 1/12)", s.rules.smoothFineBands, { v -> update { it.copy(rules = it.rules.copy(smoothFineBands = v)) } })
 
         SectionTitle("Calibración del micrófono")
         Text(

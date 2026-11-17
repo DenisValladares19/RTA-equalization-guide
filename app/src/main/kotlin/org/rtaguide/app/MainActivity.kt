@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
@@ -50,7 +49,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.rtaguide.app.ui.AnalyzerScreen
 import org.rtaguide.app.ui.CurvesScreen
-import org.rtaguide.app.ui.EqScreen
 import org.rtaguide.app.ui.RtaTheme
 import org.rtaguide.app.ui.SessionsScreen
 import org.rtaguide.app.ui.SettingsScreen
@@ -78,7 +76,6 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
     Tab("Analizador", Icons.Default.Home),
-    Tab("EQ", Icons.Default.Build),
     Tab("Curvas", Icons.Default.Edit),
     Tab("Sesiones", Icons.Default.List),
     Tab("Ajustes", Icons.Default.Settings),
@@ -128,10 +125,10 @@ fun RtaApp(vm: AnalyzerViewModel) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val content: @Composable () -> Unit = {
         when (tab) {
+            // The EQ suggestions tab (EqScreen) is hidden; its code is kept for later.
             0 -> AnalyzerScreen(state, vm)
-            1 -> EqScreen(state, vm)
-            2 -> CurvesScreen(state, vm)
-            3 -> SessionsScreen(state, vm)
+            1 -> CurvesScreen(state, vm)
+            2 -> SessionsScreen(state, vm)
             else -> SettingsScreen(state, vm)
         }
     }

@@ -19,7 +19,6 @@ import org.rtaguide.app.data.AppSettings
 import org.rtaguide.app.data.CalibrationStore
 import org.rtaguide.app.data.CurveStore
 import org.rtaguide.app.data.InputSource
-import org.rtaguide.app.data.PreviewSource
 import org.rtaguide.app.data.SessionStore
 import org.rtaguide.app.data.SettingsStore
 import org.rtaguide.dsp.Band
@@ -29,16 +28,15 @@ import org.rtaguide.dsp.SpatialAverager
 import org.rtaguide.dsp.SplMeter
 import org.rtaguide.dsp.WavWriter
 import org.rtaguide.dsp.Weighting
+import org.rtaguide.targets.Alignment
 import org.rtaguide.targets.BuiltInCurves
 import org.rtaguide.targets.CurveComparator
 import org.rtaguide.targets.CurveComparison
 import org.rtaguide.targets.CurveEditor
 import org.rtaguide.targets.EqAdvisor
-import org.rtaguide.targets.EqPreview
 import org.rtaguide.targets.EqSuggestion
 import org.rtaguide.targets.GraphicEqBand
 import org.rtaguide.targets.GraphicEqMapper
-import org.rtaguide.targets.ParametricFitter
 import org.rtaguide.targets.PeakingFilter
 import org.rtaguide.targets.TargetCurve
 import org.rtaguide.targets.session.Session
@@ -97,7 +95,6 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
     private val spatial = SpatialAverager()
     private var noiseFloor: DoubleArray? = null
     private val engine: AnalyzerEngine
-    private var lastParametricMs = 0L
 
     private val _state: MutableStateFlow<UiState>
     val state: StateFlow<UiState>
@@ -201,34 +198,19 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
             warnings.add(QualityWarning.UNPROCESSED_UNAVAILABLE)
         }
 
-        // Without a broadband test signal (e.g. only ambient noise) the comparison is meaningless:
-        // ambient noise is bass-heavy and would read as "far too much bass".
-        val testSignal = SignalQuality.hasTestSignal(centers, basis, floor)
-        if (!testSignal) warnings.add(0, QualityWarning.NO_TEST_SIGNAL)
-        val compare = testSignal || s.alwaysCompare
-
-        val comparison = if (!compare) null else CurveComparator.compare(
-            bands, measured, base.curve, s.alignment, s.toleranceDb ?: base.curve.toleranceDb, ignored = lowSnr,
+        // The guide is fixed at a user-chosen level (absolute scale); it does not follow the measurement.
+        val anchor = guideAnchor(s)
+        val comparison = CurveComparator.compare(
+            bands, measured, base.curve, Alignment(Alignment.Mode.MANUAL, manualOffsetDb = anchor),
+            s.toleranceDb ?: base.curve.toleranceDb, ignored = lowSnr,
         )
-        val suggestion = comparison?.let { EqAdvisor.suggest(it, s.rules, s.bandsPerOctave, lowSnr) }
-        val graphic = suggestion?.let { GraphicEqMapper.map(it, s.graphicLayoutEnum) } ?: emptyList()
-
-        val now = System.currentTimeMillis()
-        var parametric = base.parametric
-        var rms = base.parametricRmsDb
-        if (suggestion == null) {
-            parametric = emptyList()
-            rms = 0.0
-        } else if (now - lastParametricMs > 400 || parametric.isEmpty() && base.suggestion == null) {
-            parametric = ParametricFitter.fit(suggestion, s.maxParametricFilters, frame.sampleRate.toDouble())
-            rms = ParametricFitter.rmsError(suggestion, parametric)
-            lastParametricMs = now
-        }
-        val preview = if (!s.showPreview || suggestion == null) null else when (s.previewSourceEnum) {
-            PreviewSource.GRAPHIC -> EqPreview.withGraphic(measured, centers, graphic)
-            PreviewSource.PARAMETRIC -> EqPreview.withParametric(measured, centers, parametric)
-            PreviewSource.BANDS -> EqPreview.withCorrections(measured, suggestion)
-        }
+        // Band-by-band suggestions are kept for saved sessions; the EQ tab and preview are hidden.
+        val suggestion = EqAdvisor.suggest(comparison, s.rules, s.bandsPerOctave, lowSnr)
+        val graphic = GraphicEqMapper.map(suggestion, s.graphicLayoutEnum)
+        val parametric = emptyList<PeakingFilter>()
+        val rms = 0.0
+        val preview: DoubleArray? = null
+        val testSignal = true
         val spl = s.splOffsetDb?.let {
             SplReadout(
                 SplMeter.overallLevel(frame.averagedDb, centers, Weighting.Z, it),
@@ -424,6 +406,28 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
     }
 
     fun setSplOffset(offset: Double?) = updateSettings { it.copy(splOffsetDb = offset) }
+
+    // ---------------------------------------------------------------- guide level
+
+    /** Guide anchor in display units (dB SPL when calibrated) for the current band resolution. */
+    fun guideAnchor(s: AppSettings = _state.value.settings): Double = s.guideAnchorForBands + (s.splOffsetDb ?: 0.0)
+
+    fun nudgeGuide(deltaDb: Double) = updateSettings { it.copy(guideAnchorDb = (it.guideAnchorDb + deltaDb).coerceIn(-90.0, 0.0)) }
+
+    /** Places the guide once where the current measurement is (average 500 Hz–2 kHz), then leaves it fixed. */
+    fun fitGuideToMeasurement() {
+        val st = _state.value
+        val frame = st.frame
+        val measured = st.measuredDb
+        if (frame == null || measured == null) return message("Aún no hay medición.")
+        val idx = frame.bands.indices.filter { frame.bands[it].centerHz in 500.0..2000.0 }
+        if (idx.isEmpty()) return
+        val level = idx.map { measured[it] - st.curve.relativeGainAt(frame.bands[it].centerHz) }.average()
+        val s = st.settings
+        val anchorThird = level - (s.splOffsetDb ?: 0.0) - 10.0 * kotlin.math.log10(3.0 / s.bandsPerOctave)
+        updateSettings { it.copy(guideAnchorDb = Math.round(anchorThird * 2) / 2.0) }
+        message("Guía fijada en %.1f dBFS".format(Math.round(anchorThird * 2) / 2.0))
+    }
 
     // ---------------------------------------------------------------- sessions
 

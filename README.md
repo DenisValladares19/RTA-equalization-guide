@@ -5,9 +5,9 @@ espectro, **dibuja detrás una silueta con la curva objetivo** y te dice **cuán
 bajar cada frecuencia** para ecualizar un sistema de audio profesional.
 
 - 📈 RTA en 1/1, 1/3, 1/6 o 1/12 de octava con análisis multirresolución (graves finos sin perder velocidad).
-- 🎯 Curvas objetivo con banda de tolerancia: plana, estudio, sala tipo Harman, curva X, PA en vivo, club, voz y graves pronunciados (guía de directo). Vista *Guía* con el espectro como línea sobre una banda verde en dB relativos, o vista de barras con silueta. Editables y creables desde una medición.
-- 🎚️ Guía de EQ: faders para EQ gráfico de 31/15/10 bandas y filtros paramétricos (frecuencia, ganancia y Q), con reglas profesionales (recortar antes que realzar, no corregir cancelaciones de sala).
-- 👁️ Vista previa de cómo quedaría el espectro con la EQ aplicada, y comparación antes/después.
+- 🎯 Curvas objetivo con banda de tolerancia: plana, estudio, sala tipo Harman, curva X, PA en vivo, club, voz y graves pronunciados (guía de directo). El espectro se dibuja como línea, en escala absoluta, sobre una banda verde fija en el nivel que elijas (−25 dBFS por defecto); también hay vista de barras. Editables y creables desde una medición.
+- 👆 Toca el espectro para ver la frecuencia, su nivel y la diferencia con la guía; comparación antes/después con mediciones guardadas.
+- 🎚️ Motor de sugerencias de EQ (31/15/10 bandas y paramétrico) incluido en el código; su pestaña está oculta.
 - 🎤 Calibración de micrófono (UMIK, Dayton, REW), micrófonos USB, SPL con calibrador de 94 dB, ponderación A/C.
 - 📍 Promedio espacial de varias posiciones, ruido de fondo y avisos de saturación.
 - 🔊 Generador de ruido rosa y exportación WAV para reproducir desde la mesa.

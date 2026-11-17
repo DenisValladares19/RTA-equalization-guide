@@ -39,8 +39,6 @@ motores, viento o el roce del teléfono. Casi toda esa energía está por debajo
 en bandas de octava los graves aparecen 15–25 dB por encima de los agudos. Es real (por eso los
 sonómetros usan la ponderación A, que los atenúa), pero **no dice nada del sistema de sonido**.
 
-Por eso la app solo compara con la guía cuando detecta una **señal de prueba de banda ancha**
-(los agudos de 2–8 kHz a menos de 12 dB de los medios y, si capturaste el ruido de fondo, al
-menos 10 dB por encima de él). Sin señal de prueba muestra el espectro en escala absoluta, como
-un analizador normal, y oculta la guía y las sugerencias. Puedes forzar la comparación en
-*Ajustes → Comparar aunque no haya señal de prueba*.
+Por eso la app usa siempre una **escala absoluta** y la guía queda **fija** en el nivel que
+elijas: el ruido ambiental se ve bajo, por debajo de la guía, y solo al reproducir ruido rosa a
+volumen de trabajo el espectro "sube" hasta la banda verde.
