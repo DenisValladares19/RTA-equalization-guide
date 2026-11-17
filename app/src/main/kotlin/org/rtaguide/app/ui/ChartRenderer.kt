@@ -35,7 +35,35 @@ data class ChartModel(
     val unit: String = "dBFS",
     /** GUIDE: smoothed spectrum line over a green target band. SILHOUETTE: colored bars over a filled silhouette. */
     val style: ChartStyle = ChartStyle.SILHOUETTE,
-)
+    /** Frequency cursor (vertical line) at an exact frequency, or null. */
+    val cursorHz: Double? = null,
+) {
+    /**
+     * Measured level at [hz]: smooth Catmull-Rom interpolation of the band levels over log-frequency.
+     * The spectrum line is drawn with this same function, so the cursor value sits exactly on it.
+     */
+    fun measuredAt(hz: Double): Double? {
+        val levels = measuredDb ?: return null
+        val n = minOf(levels.size, bands.size)
+        if (n == 0) return null
+        if (n == 1) return levels[0]
+        val x = kotlin.math.ln(hz)
+        val xs = DoubleArray(n) { kotlin.math.ln(bands[it].centerHz) }
+        if (x <= xs[0]) return levels[0]
+        if (x >= xs[n - 1]) return levels[n - 1]
+        var i = 0
+        while (i < n - 2 && x > xs[i + 1]) i++
+        val t = (x - xs[i]) / (xs[i + 1] - xs[i])
+        val p0 = levels[maxOf(i - 1, 0)]
+        val p1 = levels[i]
+        val p2 = levels[i + 1]
+        val p3 = levels[minOf(i + 2, n - 1)]
+        return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t)
+    }
+
+    /** Guide (target) level at [hz], or null when there is no curve. */
+    fun guideAt(hz: Double): Double? = curve?.let { it.relativeGainAt(hz) + curveOffsetDb }
+}
 
 /**
  * Draws the chart with android.graphics so the same code renders on screen (Compose
@@ -96,6 +124,9 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         strokeJoin = Paint.Join.ROUND
     }
     private val zeroPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = withAlpha(fg, 0x80); strokeWidth = 1.2f * density }
+    private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fg; strokeWidth = 1.5f * density }
+    private val cursorDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = COLOR_SPECTRUM }
+    private val cursorGuideDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = COLOR_GUIDE }
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; color = fg; strokeWidth = 1.5f * density
     }
@@ -112,6 +143,13 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
 
     fun y(db: Double, r: RectF, m: ChartModel): Float =
         r.top + ((m.yTopDb - db) / m.yRangeDb).toFloat().coerceIn(0f, 1f) * r.height()
+
+    /** Exact frequency under the horizontal position [px], or null outside the plot. */
+    fun hzAt(px: Float, width: Float): Double? {
+        val r = plotRect(width, 100f)
+        if (px < r.left || px > r.right) return null
+        return MIN_HZ * (MAX_HZ / MIN_HZ).pow(((px - r.left) / r.width()).toDouble())
+    }
 
     /** Band under the horizontal position [px], or null. */
     fun bandAt(m: ChartModel, px: Float, width: Float): Int? {
@@ -153,6 +191,7 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
             val b = m.bands[selected]
             canvas.drawRect(x(b.lowHz, r), r.top, x(b.highHz, r), r.bottom, selectionPaint)
         }
+        m.cursorHz?.let { drawCursor(canvas, r, m, it) }
         canvas.restore()
         canvas.restore()
     }
@@ -239,18 +278,21 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         points.drop(1).forEach { lineTo(it.first, it.second) }
     }
 
-    /** Band levels joined with a smooth curve (quadratic segments through midpoints). */
+    /** Band levels joined with a smooth curve (same interpolation as [ChartModel.measuredAt]). */
     private fun drawSmoothBandLine(canvas: Canvas, r: RectF, m: ChartModel, levels: DoubleArray, paint: Paint) {
         val n = minOf(levels.size, m.bands.size)
         if (n < 2) return
-        val xs = FloatArray(n) { x(m.bands[it].centerHz, r) }
-        val ys = FloatArray(n) { y(levels[it], r, m) }
+        val first = m.bands[0].centerHz
+        val last = m.bands[n - 1].centerHz
+        val steps = 400
         val path = Path()
-        path.moveTo(xs[0], ys[0])
-        for (i in 1 until n - 1) {
-            path.quadTo(xs[i], ys[i], (xs[i] + xs[i + 1]) / 2, (ys[i] + ys[i + 1]) / 2)
+        for (k in 0..steps) {
+            val hz = first * (last / first).pow(k.toDouble() / steps)
+            val level = m.measuredAt(hz) ?: return
+            val xx = x(hz, r)
+            val yy = y(level, r, m)
+            if (k == 0) path.moveTo(xx, yy) else path.lineTo(xx, yy)
         }
-        path.lineTo(xs[n - 1], ys[n - 1])
         canvas.drawPath(path, paint)
     }
 
@@ -302,6 +344,13 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         path.moveTo(x(hz[0], r), y(db[0], r, m))
         for (i in 1 until hz.size) path.lineTo(x(hz[i], r), y(db[i], r, m))
         canvas.drawPath(path, paint)
+    }
+
+    private fun drawCursor(canvas: Canvas, r: RectF, m: ChartModel, hz: Double) {
+        val xx = x(hz, r)
+        canvas.drawLine(xx, r.top, xx, r.bottom, cursorPaint)
+        m.guideAt(hz)?.takeIf { m.showSilhouette }?.let { canvas.drawCircle(xx, y(it, r, m), 4f * density, cursorGuideDot) }
+        m.measuredAt(hz)?.let { canvas.drawCircle(xx, y(it, r, m), 5f * density, cursorDot) }
     }
 
     private fun drawFeedbackMarker(canvas: Canvas, r: RectF, hz: Double) {

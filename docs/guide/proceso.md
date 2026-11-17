@@ -10,7 +10,8 @@
    La escala va por defecto de 0 a −90 dBFS. **Arrastra el gráfico** arriba/abajo para moverla,
    **pellizca** para ampliarla o reducirla, o pulsa *Autoescala* para encuadrar espectro y guía.
 6. **Compara la línea con la banda verde**: donde la línea se sale por arriba, sobra; por debajo, falta.
-   Toca el espectro para ver la frecuencia exacta, su nivel y la diferencia con la guía.
+   Toca el espectro para poner un cursor en la frecuencia exacta (arrastra en horizontal para
+   moverlo, doble toque para quitarlo): muestra su nivel, el de la guía y la diferencia.
 7. **Ecualiza** en tu mesa o procesador: recorta primero los picos, realza poco.
 8. **Guarda la medición** (pestaña Sesiones) como "antes", aplica los cambios, reinicia el promedio,
    vuelve a medir y usa *Comparar* para ver el antes y el después.

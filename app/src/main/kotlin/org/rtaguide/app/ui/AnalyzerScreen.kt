@@ -38,7 +38,7 @@ import org.rtaguide.app.data.ChartStyle
 import org.rtaguide.dsp.AveragingMode
 import kotlin.math.ceil
 
-fun chartModelOf(state: UiState): ChartModel {
+fun chartModelOf(state: UiState, cursorHz: Double? = null): ChartModel {
     val frame = state.frame
     val s = state.settings
     val offset = state.displayOffsetDb
@@ -63,6 +63,7 @@ fun chartModelOf(state: UiState): ChartModel {
         yRangeDb = s.yRangeDb,
         unit = s.unit,
         style = s.chartStyleEnum,
+        cursorHz = cursorHz,
     )
 }
 
@@ -71,20 +72,20 @@ const val GUIDE_RANGE_DB = 30.0
 
 @Composable
 fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
-    var selected by remember { mutableStateOf<Int?>(null) }
+    var cursorHz by remember { mutableStateOf<Double?>(null) }
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val onTap: (Int?) -> Unit = { selected = if (selected == it) null else it }
+    val onCursor: (Double?) -> Unit = { cursorHz = it }
 
     if (state.chartFullscreen) {
         // Full screen: only the spectrum (and the selected band), maximum space.
         Box(Modifier.fillMaxSize()) {
-            RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap, onPanZoom = vm::panZoomScale)
+            RtaChart(chartModelOf(state, cursorHz), Modifier.fillMaxSize(), onCursor, onPanZoom = vm::panZoomScale)
             Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(6.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 FilledTonalButton(onClick = vm::toggleFullscreen) { Text("Salir de pantalla completa") }
                 Text(state.curve.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
-            if (selected != null) {
-                Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 22.dp)) { BandInfo(state, selected) }
+            if (cursorHz != null) {
+                Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 22.dp)) { CursorInfo(state, cursorHz) }
             }
         }
         return
@@ -94,8 +95,8 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
         Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxHeight().padding(start = 4.dp)) {
                 Header(state, compact = true)
-                ChartWithZoom(state, vm, selected, onTap, Modifier.weight(1f).fillMaxWidth())
-                BandInfo(state, selected)
+                ChartWithZoom(state, vm, cursorHz, onCursor, Modifier.weight(1f).fillMaxWidth())
+                CursorInfo(state, cursorHz)
             }
             Column(
                 Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp),
@@ -125,8 +126,8 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
                 GuideLevel(state, vm)
                 Warnings(state)
             }
-            ChartWithZoom(state, vm, selected, onTap, Modifier.weight(1f).fillMaxWidth())
-            BandInfo(state, selected)
+            ChartWithZoom(state, vm, cursorHz, onCursor, Modifier.weight(1f).fillMaxWidth())
+            CursorInfo(state, cursorHz)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -142,9 +143,9 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
 }
 
 @Composable
-private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, selected: Int?, onTap: (Int?) -> Unit, modifier: Modifier) {
+private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, cursorHz: Double?, onCursor: (Double?) -> Unit, modifier: Modifier) {
     Box(modifier) {
-        RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap, onPanZoom = vm::panZoomScale)
+        RtaChart(chartModelOf(state, cursorHz), Modifier.fillMaxSize(), onCursor, onPanZoom = vm::panZoomScale)
         TextButton(onClick = vm::toggleFullscreen, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
             Text("⤢ Ampliar")
         }
@@ -254,22 +255,22 @@ private fun GuideLevel(state: UiState, vm: AnalyzerViewModel) {
 }
 
 @Composable
-private fun BandInfo(state: UiState, selected: Int?) {
-    val frame = state.frame
-    val measured = state.measuredDb
+private fun CursorInfo(state: UiState, cursorHz: Double?) {
     val unit = state.settings.unit
-    val text = if (selected == null || frame == null || measured == null || selected !in frame.bands.indices) {
-        "Toca el espectro para ver la frecuencia y su nivel."
+    val model = chartModelOf(state, cursorHz)
+    val text = if (cursorHz == null) {
+        "Toca el espectro para ver la frecuencia exacta (arrastra en horizontal para moverte, doble toque para quitar)."
     } else {
-        val band = frame.bands[selected]
-        val range = "%s–%s Hz".format(
-            org.rtaguide.dsp.formatFrequency(band.lowHz), org.rtaguide.dsp.formatFrequency(band.highHz),
-        )
-        val level = measured[selected]
-        val base = "${band.label} Hz ($range): %.1f %s".format(level, unit)
-        val item = state.comparison?.items?.getOrNull(selected)
-        if (item == null || !state.settings.showSilhouette) base
-        else base + "  ·  guía %.1f %s (%+.1f dB)".format(item.targetDb, unit, item.deviationDb)
+        val level = model.measuredAt(cursorHz)
+        val guide = model.guideAt(cursorHz)?.takeIf { state.settings.showSilhouette }
+        buildString {
+            append(formatCursorHz(cursorHz))
+            if (level != null) append(":  %.1f %s".format(level, unit))
+            if (guide != null) {
+                append("  ·  guía %.1f %s".format(guide, unit))
+                if (level != null) append(" (%+.1f dB)".format(level - guide))
+            }
+        }
     }
     Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
 }
