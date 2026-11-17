@@ -1,0 +1,173 @@
+package org.rtaguide.app.ui
+
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import org.rtaguide.app.AnalyzerViewModel
+import org.rtaguide.app.UiState
+import org.rtaguide.dsp.AveragingMode
+import org.rtaguide.targets.CorrectionFlag
+import kotlin.math.ceil
+
+fun chartModelOf(state: UiState): ChartModel {
+    val frame = state.frame
+    val s = state.settings
+    val offset = state.displayOffsetDb
+    return ChartModel(
+        bands = frame?.bands ?: emptyList(),
+        measuredDb = state.measuredDb,
+        statuses = state.comparison?.items?.map { it.status },
+        curve = state.curve,
+        curveOffsetDb = state.comparison?.offsetDb ?: (s.yTopDb - 20),
+        toleranceDb = state.comparison?.toleranceDb ?: state.curve.toleranceDb,
+        showSilhouette = s.showSilhouette,
+        fineHz = if (s.showFineSpectrum) frame?.fineHz else null,
+        fineDb = if (s.showFineSpectrum) frame?.fineDb?.let { db -> DoubleArray(db.size) { db[it] + offset } } else null,
+        maxHoldDb = if (s.showMaxHold) frame?.maxHoldDb?.let { db -> DoubleArray(db.size) { db[it] + offset } } else null,
+        referenceDb = state.referenceDb,
+        previewDb = state.previewDb,
+        feedbackHz = frame?.feedback?.map { it.frequencyHz } ?: emptyList(),
+        yTopDb = s.yTopDb + offset,
+        yRangeDb = s.yRangeDb,
+        unit = s.unit,
+    )
+}
+
+@Composable
+fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
+    var selected by remember { mutableStateOf<Int?>(null) }
+    val s = state.settings
+    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+        // Header: level and curve score.
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                val level = state.spl?.let { "%.1f dB SPL (Z)  ·  %.1f dBA  ·  %.1f dBC".format(it.z, it.a, it.c) }
+                    ?: state.frame?.let { "%.1f dBFS".format(it.overallDbFs) } ?: "—"
+                Text(level, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                val cmp = state.comparison
+                Text(
+                    buildString {
+                        append(state.curve.name)
+                        if (cmp != null) append("  ·  ${cmp.okCount}/${cmp.ratedCount} bandas en ±%.0f dB".format(cmp.toleranceDb))
+                        if (state.useSpatial) append("  ·  promedio de ${state.spatialCount} posiciones")
+                        if (state.reference != null) append("  ·  comparando con \"${state.reference.name}\"")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OptionSelector(
+                label = "",
+                options = state.curves,
+                selected = state.curve,
+                labelOf = { it.name },
+                onSelect = { vm.selectCurve(it.id) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        if (state.warnings.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                state.warnings.forEach { w ->
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(w.message, style = MaterialTheme.typography.bodySmall) },
+                        colors = AssistChipDefaults.assistChipColors(labelColor = StatusWarning),
+                    )
+                }
+            }
+        }
+
+        RtaChart(
+            model = chartModelOf(state),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            selectedBand = selected,
+            onTapBand = { selected = if (selected == it) null else it },
+        )
+
+        BandInfo(state, selected)
+
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(onClick = vm::toggleRunning) { Text(if (state.running) "Detener" else "Medir") }
+            FilterChip(selected = state.pinkPlaying, onClick = vm::togglePink, label = { Text("Ruido rosa") })
+            FilterChip(selected = state.frozen, onClick = vm::toggleFreeze, label = { Text("Congelar") })
+            OutlinedButton(onClick = vm::resetAveraging) { Text("Reiniciar") }
+            OptionSelector(
+                label = "",
+                options = AveragingMode.entries.toList(),
+                selected = s.averagingEnum,
+                labelOf = { it.label },
+                onSelect = { mode -> vm.updateSettings { it.copy(averaging = mode.name) } },
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Silueta") })
+            FilterChip(selected = s.showPreview, onClick = { vm.updateSettings { it.copy(showPreview = !it.showPreview) } }, label = { Text("Vista previa EQ") })
+            FilterChip(selected = s.showFineSpectrum, onClick = { vm.updateSettings { it.copy(showFineSpectrum = !it.showFineSpectrum) } }, label = { Text("Línea FFT") })
+            FilterChip(selected = s.showMaxHold, onClick = { vm.updateSettings { it.copy(showMaxHold = !it.showMaxHold) } }, label = { Text("Máximos") })
+            OutlinedButton(onClick = vm::capturePosition) { Text("Capturar posición (${state.spatialCount})") }
+            if (state.spatialCount > 0) {
+                FilterChip(selected = state.useSpatial, onClick = { vm.setUseSpatial(!state.useSpatial) }, label = { Text("Promedio espacial") })
+                OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
+                OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
+            }
+            OutlinedButton(onClick = {
+                val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
+                val top = ceil((max - state.displayOffsetDb + 6) / 10) * 10
+                vm.updateSettings { it.copy(yTopDb = top) }
+            }) { Text("Autoescala") }
+        }
+        if (!state.hasPermission) {
+            Text("Concede el permiso de micrófono para medir.", color = StatusOut, modifier = Modifier.padding(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun BandInfo(state: UiState, selected: Int?) {
+    val cmp = state.comparison
+    val sug = state.suggestion
+    val text = if (selected == null || cmp == null || sug == null || selected !in cmp.items.indices) {
+        "Toca una banda para ver cuánto subir o bajar."
+    } else {
+        val c = cmp.items[selected]
+        val corr = sug.items[selected]
+        val action = when {
+            corr.flag == CorrectionFlag.NONE || corr.flag == CorrectionFlag.BOOST_LIMITED || corr.flag == CorrectionFlag.CUT_LIMITED ->
+                if (corr.correctionDb < 0) "bajar ${formatGain(-corr.correctionDb).removePrefix("+")}" else "subir ${formatGain(corr.correctionDb)}"
+            else -> corr.flag.message
+        }
+        "${c.band.label} Hz: medido %.1f, objetivo %.1f (%+.1f dB) → %s".format(c.measuredDb, c.targetDb, c.deviationDb, action) +
+            if (corr.flag == CorrectionFlag.BOOST_LIMITED || corr.flag == CorrectionFlag.CUT_LIMITED) " (${corr.flag.message.lowercase()})" else ""
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 4.dp))
+}
