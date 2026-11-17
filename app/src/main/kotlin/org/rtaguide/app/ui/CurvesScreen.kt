@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.rtaguide.app.AnalyzerViewModel
 import org.rtaguide.app.UiState
+import org.rtaguide.app.data.ChartStyle
 import org.rtaguide.dsp.BandSet
 import org.rtaguide.targets.CurveEditor
 import org.rtaguide.targets.TargetCurve
@@ -103,9 +104,10 @@ fun CurvesScreen(state: UiState, vm: AnalyzerViewModel) {
                             curve = curve,
                             curveOffsetDb = 0.0,
                             toleranceDb = curve.toleranceDb,
-                            yTopDb = 15.0,
-                            yRangeDb = 30.0,
+                            yTopDb = GUIDE_TOP_DB,
+                            yRangeDb = GUIDE_RANGE_DB,
                             unit = "dB",
+                            style = ChartStyle.GUIDE,
                         ),
                         Modifier.fillMaxWidth().height(110.dp).padding(top = 6.dp),
                     )
@@ -132,7 +134,10 @@ private fun CurveEditorView(initial: TargetCurve, onCancel: () -> Unit, onSave: 
             OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             SliderRow("Tolerancia", tolerance, 0.5..6.0, 0.5, { "±%.1f dB".format(it) }) { v -> tolerance = v }
             RtaChart(
-                ChartModel(bands = BandSet(3).bands, curve = preview, toleranceDb = tolerance, yTopDb = 15.0, yRangeDb = 30.0, unit = "dB"),
+                ChartModel(
+                    bands = BandSet(3).bands, curve = preview, toleranceDb = tolerance,
+                    yTopDb = GUIDE_TOP_DB, yRangeDb = GUIDE_RANGE_DB, unit = "dB", style = ChartStyle.GUIDE,
+                ),
                 Modifier.fillMaxWidth().height(160.dp),
             )
             Text(

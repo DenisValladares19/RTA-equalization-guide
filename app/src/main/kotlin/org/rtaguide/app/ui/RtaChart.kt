@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -19,7 +20,7 @@ fun RtaChart(model: ChartModel, modifier: Modifier = Modifier, selectedBand: Int
     val currentModel by rememberUpdatedState(model)
     val currentTap by rememberUpdatedState(onTapBand)
     Canvas(
-        modifier.pointerInput(Unit) {
+        modifier.clipToBounds().pointerInput(Unit) {
             detectTapGestures { offset ->
                 currentTap(renderer.bandAt(currentModel, offset.x, size.width.toFloat()))
             }

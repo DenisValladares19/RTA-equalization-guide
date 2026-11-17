@@ -1,6 +1,14 @@
 package org.rtaguide.app.ui
 
 import androidx.compose.foundation.horizontalScroll
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -67,105 +75,165 @@ const val GUIDE_RANGE_DB = 30.0
 @Composable
 fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
     var selected by remember { mutableStateOf<Int?>(null) }
-    val s = state.settings
-    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-        // Header: level and curve score.
-        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                val level = state.spl?.let { "%.1f dB SPL (Z)  ·  %.1f dBA  ·  %.1f dBC".format(it.z, it.a, it.c) }
-                    ?: state.frame?.let { "%.1f dBFS".format(it.overallDbFs) } ?: "—"
-                Text(level, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                val cmp = state.comparison
-                Text(
-                    buildString {
-                        append(state.curve.name)
-                        if (cmp != null) append("  ·  ${cmp.okCount}/${cmp.ratedCount} bandas en ±%.0f dB".format(cmp.toleranceDb))
-                        if (state.useSpatial) append("  ·  promedio de ${state.spatialCount} posiciones")
-                        if (state.reference != null) append("  ·  comparando con \"${state.reference.name}\"")
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            OptionSelector(
-                label = "",
-                options = state.curves,
-                selected = state.curve,
-                labelOf = { it.name },
-                onSelect = { vm.selectCurve(it.id) },
-                modifier = Modifier.weight(1f),
-            )
-        }
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val onTap: (Int?) -> Unit = { selected = if (selected == it) null else it }
 
-        if (state.warnings.isNotEmpty()) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                state.warnings.forEach { w ->
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(w.message, style = MaterialTheme.typography.bodySmall) },
-                        colors = AssistChipDefaults.assistChipColors(labelColor = StatusWarning),
-                    )
-                }
+    if (state.chartFullscreen) {
+        // Full screen: only the spectrum (and the selected band), maximum space.
+        Box(Modifier.fillMaxSize()) {
+            RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+            Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(6.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                FilledTonalButton(onClick = vm::toggleFullscreen) { Text("Salir de pantalla completa") }
+                Text(state.curve.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            if (selected != null) {
+                Box(Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 22.dp)) { BandInfo(state, selected) }
             }
         }
+        return
+    }
 
-        RtaChart(
-            model = chartModelOf(state),
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            selectedBand = selected,
-            onTapBand = { selected = if (selected == it) null else it },
+    if (landscape) {
+        Row(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxHeight().padding(start = 4.dp)) {
+                Header(state, compact = true)
+                ChartWithZoom(state, vm, selected, onTap, Modifier.weight(1f).fillMaxWidth())
+                BandInfo(state, selected)
+            }
+            Column(
+                Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text("Guía (silueta)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                CurveChips(state, vm)
+                Warnings(state)
+                Text("Medición", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                PrimaryControls(state, vm)
+                Text("Vista", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                SecondaryControls(state, vm)
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+            Header(state, compact = false)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                CurveChips(state, vm)
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { Warnings(state) }
+            ChartWithZoom(state, vm, selected, onTap, Modifier.weight(1f).fillMaxWidth())
+            BandInfo(state, selected)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) { PrimaryControls(state, vm) }
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) { SecondaryControls(state, vm) }
+        }
+    }
+}
+
+@Composable
+private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, selected: Int?, onTap: (Int?) -> Unit, modifier: Modifier) {
+    Box(modifier) {
+        RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+        TextButton(onClick = vm::toggleFullscreen, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
+            Text("⤢ Ampliar")
+        }
+    }
+}
+
+@Composable
+private fun Header(state: UiState, compact: Boolean) {
+    val level = state.spl?.let { "%.1f dB SPL (Z)  ·  %.1f dBA  ·  %.1f dBC".format(it.z, it.a, it.c) }
+        ?: state.frame?.let { "%.1f dBFS".format(it.overallDbFs) } ?: "—"
+    val cmp = state.comparison
+    val summary = buildString {
+        append(state.curve.name)
+        if (cmp != null) append("  ·  ${cmp.okCount}/${cmp.ratedCount} bandas en ±%.0f dB".format(cmp.toleranceDb))
+        if (state.useSpatial) append("  ·  promedio de ${state.spatialCount} posiciones")
+        if (state.reference != null) append("  ·  comparando con \"${state.reference.name}\"")
+    }
+    if (compact) {
+        Text("$level  ·  $summary", style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.padding(vertical = 2.dp))
+    } else {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Text(level, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** One chip per target curve: selecting one replaces the green guide on the spectrum. */
+@Composable
+private fun CurveChips(state: UiState, vm: AnalyzerViewModel) {
+    state.curves.forEach { curve ->
+        FilterChip(
+            selected = curve.id == state.curve.id,
+            onClick = { vm.selectCurve(curve.id) },
+            label = { Text(curve.name, maxLines = 1) },
         )
+    }
+}
 
-        BandInfo(state, selected)
+@Composable
+private fun Warnings(state: UiState) {
+    state.warnings.forEach { w ->
+        AssistChip(
+            onClick = {},
+            label = { Text(w.message, style = MaterialTheme.typography.bodySmall) },
+            colors = AssistChipDefaults.assistChipColors(labelColor = StatusWarning),
+        )
+    }
+}
 
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(onClick = vm::toggleRunning) { Text(if (state.running) "Detener" else "Medir") }
-            FilterChip(selected = state.pinkPlaying, onClick = vm::togglePink, label = { Text("Ruido rosa") })
-            FilterChip(selected = state.frozen, onClick = vm::toggleFreeze, label = { Text("Congelar") })
-            OutlinedButton(onClick = vm::resetAveraging) { Text("Reiniciar") }
-            OptionSelector(
-                label = "",
-                options = AveragingMode.entries.toList(),
-                selected = s.averagingEnum,
-                labelOf = { it.label },
-                onSelect = { mode -> vm.updateSettings { it.copy(averaging = mode.name) } },
-            )
-        }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OptionSelector(
-                label = "",
-                options = ChartStyle.entries.toList(),
-                selected = s.chartStyleEnum,
-                labelOf = { it.label },
-                onSelect = { style -> vm.updateSettings { it.copy(chartStyle = style.name) } },
-            )
-            FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Guía/silueta") })
-            FilterChip(selected = s.showPreview, onClick = { vm.updateSettings { it.copy(showPreview = !it.showPreview) } }, label = { Text("Vista previa EQ") })
-            FilterChip(selected = s.showFineSpectrum, onClick = { vm.updateSettings { it.copy(showFineSpectrum = !it.showFineSpectrum) } }, label = { Text("Línea FFT") })
-            FilterChip(selected = s.showMaxHold, onClick = { vm.updateSettings { it.copy(showMaxHold = !it.showMaxHold) } }, label = { Text("Máximos") })
-            OutlinedButton(onClick = vm::capturePosition) { Text("Capturar posición (${state.spatialCount})") }
-            if (state.spatialCount > 0) {
-                FilterChip(selected = state.useSpatial, onClick = { vm.setUseSpatial(!state.useSpatial) }, label = { Text("Promedio espacial") })
-                OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
-                OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
-            }
-            if (s.chartStyleEnum == ChartStyle.SILHOUETTE) OutlinedButton(onClick = {
-                val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
-                val top = ceil((max - state.displayOffsetDb + 6) / 10) * 10
-                vm.updateSettings { it.copy(yTopDb = top) }
-            }) { Text("Autoescala") }
-        }
-        if (!state.hasPermission) {
-            Text("Concede el permiso de micrófono para medir.", color = StatusOut, modifier = Modifier.padding(4.dp))
-        }
+@Composable
+private fun PrimaryControls(state: UiState, vm: AnalyzerViewModel) {
+    Button(onClick = vm::toggleRunning) { Text(if (state.running) "Detener" else "Medir") }
+    FilterChip(selected = state.pinkPlaying, onClick = vm::togglePink, label = { Text("Ruido rosa") })
+    FilterChip(selected = state.frozen, onClick = vm::toggleFreeze, label = { Text("Congelar") })
+    OutlinedButton(onClick = vm::resetAveraging) { Text("Reiniciar") }
+    OptionSelector(
+        label = "",
+        options = AveragingMode.entries.toList(),
+        selected = state.settings.averagingEnum,
+        labelOf = { it.label },
+        onSelect = { mode -> vm.updateSettings { it.copy(averaging = mode.name) } },
+    )
+    if (!state.hasPermission) {
+        Text("Concede el permiso de micrófono para medir.", color = StatusOut, modifier = Modifier.padding(4.dp))
+    }
+}
+
+@Composable
+private fun SecondaryControls(state: UiState, vm: AnalyzerViewModel) {
+    val s = state.settings
+    OptionSelector(
+        label = "",
+        options = ChartStyle.entries.toList(),
+        selected = s.chartStyleEnum,
+        labelOf = { it.label },
+        onSelect = { style -> vm.updateSettings { it.copy(chartStyle = style.name) } },
+    )
+    FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Mostrar guía") })
+    FilterChip(selected = s.showPreview, onClick = { vm.updateSettings { it.copy(showPreview = !it.showPreview) } }, label = { Text("Vista previa EQ") })
+    FilterChip(selected = s.showFineSpectrum, onClick = { vm.updateSettings { it.copy(showFineSpectrum = !it.showFineSpectrum) } }, label = { Text("Línea FFT") })
+    FilterChip(selected = s.showMaxHold, onClick = { vm.updateSettings { it.copy(showMaxHold = !it.showMaxHold) } }, label = { Text("Máximos") })
+    OutlinedButton(onClick = vm::capturePosition) { Text("Capturar posición (${state.spatialCount})") }
+    if (state.spatialCount > 0) {
+        FilterChip(selected = state.useSpatial, onClick = { vm.setUseSpatial(!state.useSpatial) }, label = { Text("Promedio espacial") })
+        OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
+        OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
+    }
+    if (s.chartStyleEnum == ChartStyle.SILHOUETTE) {
+        OutlinedButton(onClick = {
+            val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
+            val top = ceil((max - state.displayOffsetDb + 6) / 10) * 10
+            vm.updateSettings { it.copy(yTopDb = top) }
+        }) { Text("Autoescala") }
     }
 }
 

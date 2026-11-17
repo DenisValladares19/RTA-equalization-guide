@@ -59,6 +59,7 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
     private val fg = if (light) Color.rgb(0x22, 0x22, 0x22) else Color.rgb(0xEE, 0xEE, 0xEE)
     private val background = if (light) Color.WHITE else Color.rgb(0x0F, 0x14, 0x19)
 
+    private val backgroundPaint = Paint().apply { style = Paint.Style.FILL; color = background }
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = withAlpha(fg, 0x30); strokeWidth = density
     }
@@ -121,7 +122,10 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
     }
 
     fun draw(canvas: Canvas, width: Float, height: Float, m: ChartModel, selected: Int? = null, drawBackground: Boolean = true) {
-        if (drawBackground) canvas.drawColor(background)
+        // Never paint outside our own bounds (drawColor would cover the rest of the screen).
+        canvas.save()
+        canvas.clipRect(0f, 0f, width, height)
+        if (drawBackground) canvas.drawRect(0f, 0f, width, height, backgroundPaint)
         val r = plotRect(width, height)
         drawGrid(canvas, r, m)
         canvas.save()
@@ -149,6 +153,7 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
             val b = m.bands[selected]
             canvas.drawRect(x(b.lowHz, r), r.top, x(b.highHz, r), r.bottom, selectionPaint)
         }
+        canvas.restore()
         canvas.restore()
     }
 

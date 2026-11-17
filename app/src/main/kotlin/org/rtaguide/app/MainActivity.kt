@@ -1,6 +1,16 @@
 package org.rtaguide.app
 
 import android.Manifest
+import android.app.Activity
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -100,29 +110,63 @@ fun RtaApp(vm: AnalyzerViewModel) {
             snackbar.showSnackbar(msg)
         }
     }
+    val fullscreen = state.chartFullscreen && tab == 0
+    // Immersive mode while the spectrum is full screen.
+    DisposableEffect(fullscreen) {
+        val window = (context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (fullscreen) {
+            controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+    BackHandler(enabled = fullscreen) { vm.toggleFullscreen() }
+
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val content: @Composable () -> Unit = {
+        when (tab) {
+            0 -> AnalyzerScreen(state, vm)
+            1 -> EqScreen(state, vm)
+            2 -> CurvesScreen(state, vm)
+            3 -> SessionsScreen(state, vm)
+            else -> SettingsScreen(state, vm)
+        }
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            NavigationBar {
-                tabs.forEachIndexed { i, t ->
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = { Icon(t.icon, contentDescription = t.label) },
-                        label = { Text(t.label) },
-                    )
+            if (!landscape && !fullscreen) {
+                NavigationBar {
+                    tabs.forEachIndexed { i, t ->
+                        NavigationBarItem(
+                            selected = tab == i,
+                            onClick = { tab = i },
+                            icon = { Icon(t.icon, contentDescription = t.label) },
+                            label = { Text(t.label) },
+                        )
+                    }
                 }
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when (tab) {
-                0 -> AnalyzerScreen(state, vm)
-                1 -> EqScreen(state, vm)
-                2 -> CurvesScreen(state, vm)
-                3 -> SessionsScreen(state, vm)
-                else -> SettingsScreen(state, vm)
+        Row(Modifier.padding(padding).fillMaxSize()) {
+            if (landscape && !fullscreen) {
+                // Side rail in landscape: keeps the full height for the spectrum.
+                NavigationRail {
+                    tabs.forEachIndexed { i, t ->
+                        NavigationRailItem(
+                            selected = tab == i,
+                            onClick = { tab = i },
+                            icon = { Icon(t.icon, contentDescription = t.label) },
+                            label = { Text(t.label) },
+                        )
+                    }
+                }
             }
+            Box(Modifier.weight(1f).fillMaxSize()) { content() }
         }
     }
 }

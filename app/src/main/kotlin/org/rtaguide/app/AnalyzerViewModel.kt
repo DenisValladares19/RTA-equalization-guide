@@ -53,6 +53,8 @@ data class UiState(
     val hasPermission: Boolean = false,
     val running: Boolean = false,
     val frozen: Boolean = false,
+    /** Spectrum fills the whole screen (no controls, no navigation, no system bars). */
+    val chartFullscreen: Boolean = false,
     val pinkPlaying: Boolean = false,
     val sampleRate: Int = 48000,
     val sourceLabel: String = "",
@@ -155,6 +157,8 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
         stop()
         stopPink()
     }
+
+    fun toggleFullscreen() = _state.update { it.copy(chartFullscreen = !it.chartFullscreen) }
 
     fun toggleFreeze() = _state.update { it.copy(frozen = !it.frozen) }
 
