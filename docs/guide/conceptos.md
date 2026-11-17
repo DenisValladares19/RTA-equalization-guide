@@ -32,3 +32,15 @@ forma logarítmica, por eso el RTA agrupa el espectro en **bandas de fracción d
 - *Rápido* (125 ms): sigue la música, nervioso.
 - *Lento* (1 s): lo normal para ecualizar con ruido rosa.
 - *Infinito*: acumula hasta que reinicias. La lectura más estable: déjalo 10–20 s.
+
+## ¿Por qué el ruido ambiental "tiene muchos graves"?
+Sin ruido rosa sonando, el micrófono capta el ruido de la sala: aire acondicionado, tráfico,
+motores, viento o el roce del teléfono. Casi toda esa energía está por debajo de 300 Hz, así que
+en bandas de octava los graves aparecen 15–25 dB por encima de los agudos. Es real (por eso los
+sonómetros usan la ponderación A, que los atenúa), pero **no dice nada del sistema de sonido**.
+
+Por eso la app solo compara con la guía cuando detecta una **señal de prueba de banda ancha**
+(los agudos de 2–8 kHz a menos de 12 dB de los medios y, si capturaste el ruido de fondo, al
+menos 10 dB por encima de él). Sin señal de prueba muestra el espectro en escala absoluta, como
+un analizador normal, y oculta la guía y las sugerencias. Puedes forzar la comparación en
+*Ajustes → Comparar aunque no haya señal de prueba*.

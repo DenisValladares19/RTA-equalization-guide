@@ -65,6 +65,8 @@ data class UiState(
     /** Live averaged levels in display units. */
     val liveDb: DoubleArray? = null,
     val displayOffsetDb: Double = 0.0,
+    /** A broadband test signal (pink noise through the system) is present, so the curve comparison is meaningful. */
+    val testSignal: Boolean = true,
     val comparison: CurveComparison? = null,
     val suggestion: EqSuggestion? = null,
     val graphic: List<GraphicEqBand> = emptyList(),
@@ -199,21 +201,30 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
             warnings.add(QualityWarning.UNPROCESSED_UNAVAILABLE)
         }
 
-        val comparison = CurveComparator.compare(
+        // Without a broadband test signal (e.g. only ambient noise) the comparison is meaningless:
+        // ambient noise is bass-heavy and would read as "far too much bass".
+        val testSignal = SignalQuality.hasTestSignal(centers, basis, floor)
+        if (!testSignal) warnings.add(0, QualityWarning.NO_TEST_SIGNAL)
+        val compare = testSignal || s.alwaysCompare
+
+        val comparison = if (!compare) null else CurveComparator.compare(
             bands, measured, base.curve, s.alignment, s.toleranceDb ?: base.curve.toleranceDb, ignored = lowSnr,
         )
-        val suggestion = EqAdvisor.suggest(comparison, s.rules, s.bandsPerOctave, lowSnr)
-        val graphic = GraphicEqMapper.map(suggestion, s.graphicLayoutEnum)
+        val suggestion = comparison?.let { EqAdvisor.suggest(it, s.rules, s.bandsPerOctave, lowSnr) }
+        val graphic = suggestion?.let { GraphicEqMapper.map(it, s.graphicLayoutEnum) } ?: emptyList()
 
         val now = System.currentTimeMillis()
         var parametric = base.parametric
         var rms = base.parametricRmsDb
-        if (now - lastParametricMs > 400 || parametric.isEmpty() && base.suggestion == null) {
+        if (suggestion == null) {
+            parametric = emptyList()
+            rms = 0.0
+        } else if (now - lastParametricMs > 400 || parametric.isEmpty() && base.suggestion == null) {
             parametric = ParametricFitter.fit(suggestion, s.maxParametricFilters, frame.sampleRate.toDouble())
             rms = ParametricFitter.rmsError(suggestion, parametric)
             lastParametricMs = now
         }
-        val preview = if (!s.showPreview) null else when (s.previewSourceEnum) {
+        val preview = if (!s.showPreview || suggestion == null) null else when (s.previewSourceEnum) {
             PreviewSource.GRAPHIC -> EqPreview.withGraphic(measured, centers, graphic)
             PreviewSource.PARAMETRIC -> EqPreview.withParametric(measured, centers, parametric)
             PreviewSource.BANDS -> EqPreview.withCorrections(measured, suggestion)
@@ -228,7 +239,7 @@ class AnalyzerViewModel(app: Application) : AndroidViewModel(app), AudioCapture.
         val referenceDb = base.reference?.let { AnalyzerEngine.resample(it.centersHz, it.measuredDb, centers) }
 
         return base.copy(
-            measuredDb = measured, liveDb = live, displayOffsetDb = offset, comparison = comparison,
+            measuredDb = measured, liveDb = live, displayOffsetDb = offset, testSignal = testSignal, comparison = comparison,
             suggestion = suggestion, graphic = graphic, parametric = parametric, parametricRmsDb = rms,
             previewDb = preview, warnings = warnings, lowSnrBands = lowSnr, spl = spl,
             useSpatial = useSpatial, spatialCount = spatial.count, noiseFloorCaptured = floor != null,

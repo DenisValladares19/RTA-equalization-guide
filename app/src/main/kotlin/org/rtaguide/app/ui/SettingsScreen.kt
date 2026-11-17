@@ -94,6 +94,12 @@ fun SettingsScreen(state: UiState, vm: AnalyzerViewModel) {
             Alignment.Mode.MANUAL ->
                 NumberField("Desplazamiento (dB)", s.alignment.manualOffsetDb, { v -> if (v != null) update { it.copy(alignment = it.alignment.copy(manualOffsetDb = v)) } })
         }
+        SwitchRow(
+            "Comparar aunque no haya señal de prueba",
+            s.alwaysCompare,
+            { v -> update { it.copy(alwaysCompare = v) } },
+            "Normalmente la guía solo aparece con ruido rosa sonando: el ruido ambiental tiene muchos graves y daría lecturas engañosas.",
+        )
         SliderRow("Tolerancia (0 = la de la curva)", s.toleranceDb ?: 0.0, 0.0..6.0, 0.5, {
             if (it == 0.0) "±%.1f dB (curva)".format(state.curve.toleranceDb) else "±%.1f dB".format(it)
         }) { v -> update { it.copy(toleranceDb = v.takeIf { t -> t > 0 }) } }

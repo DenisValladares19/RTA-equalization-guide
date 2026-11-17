@@ -99,4 +99,27 @@ class MeasurementTest {
         }
         assertTrue(found.isEmpty(), "false positives: $found")
     }
+
+    @Test
+    fun testSignalDetection() {
+        val bands = BandSet(3)
+        val centers = bands.centers
+        // Pink noise through a system: flat-ish in third-octaves (a mild treble roll-off is fine).
+        val pink = DoubleArray(centers.size) { if (centers[it] > 4000) -24.0 else -20.0 }
+        assertTrue(SignalQuality.hasTestSignal(centers, pink))
+        // Ambient noise: strong low end, highs ~25 dB below the mids.
+        val ambient = DoubleArray(centers.size) { i ->
+            val f = centers[i]
+            when {
+                f < 300 -> -30.0
+                f < 2000 -> -45.0
+                else -> -70.0
+            }
+        }
+        assertTrue(!SignalQuality.hasTestSignal(centers, ambient))
+        // Flat but barely above the captured background noise: not a usable measurement.
+        val floor = DoubleArray(centers.size) { -25.0 }
+        assertTrue(!SignalQuality.hasTestSignal(centers, pink, floor))
+        assertTrue(SignalQuality.hasTestSignal(centers, pink, DoubleArray(centers.size) { -50.0 }))
+    }
 }

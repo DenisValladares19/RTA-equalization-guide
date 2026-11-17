@@ -49,6 +49,8 @@ data class AppSettings(
     val curveId: String = BuiltInCurves.BASS_GUIDE.id,
     val toleranceDb: Double? = null,
     val alignment: Alignment = Alignment(),
+    /** Compare against the curve even when no broadband test signal is detected. */
+    val alwaysCompare: Boolean = false,
     val rules: EqRules = EqRules(),
     val graphicLayout: String = GraphicEqLayout.THIRTY_ONE.name,
     val maxParametricFilters: Int = 6,

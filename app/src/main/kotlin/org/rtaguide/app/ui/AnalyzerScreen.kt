@@ -42,9 +42,10 @@ import kotlin.math.ceil
 fun chartModelOf(state: UiState): ChartModel {
     val frame = state.frame
     val s = state.settings
-    val guide = s.chartStyleEnum == ChartStyle.GUIDE
     // Guide view: everything relative to the aligned target (0 dB = curve at its reference), like
-    // the classic GEQ/RTA guide screens (−9 … +21 dB).
+    // the classic GEQ/RTA guide screens (−9 … +21 dB). Without a comparison (no test signal) the
+    // spectrum is shown on the absolute scale instead, like a plain analyzer.
+    val guide = s.chartStyleEnum == ChartStyle.GUIDE && state.comparison != null
     val shift = if (guide) -(state.comparison?.offsetDb ?: 0.0) else 0.0
     val offset = state.displayOffsetDb + shift
     fun DoubleArray.shifted(by: Double) = DoubleArray(size) { this[it] + by }
@@ -55,7 +56,7 @@ fun chartModelOf(state: UiState): ChartModel {
         curve = state.curve,
         curveOffsetDb = if (guide) 0.0 else state.comparison?.offsetDb ?: (s.yTopDb - 20),
         toleranceDb = state.comparison?.toleranceDb ?: state.curve.toleranceDb,
-        showSilhouette = s.showSilhouette,
+        showSilhouette = s.showSilhouette && state.comparison != null,
         fineHz = if (s.showFineSpectrum) frame?.fineHz else null,
         fineDb = if (s.showFineSpectrum) frame?.fineDb?.shifted(offset) else null,
         maxHoldDb = if (s.showMaxHold) frame?.maxHoldDb?.shifted(offset) else null,
@@ -82,6 +83,7 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
         // Full screen: only the spectrum (and the selected band), maximum space.
         Box(Modifier.fillMaxSize()) {
             RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+            NoSignalBanner(state, Modifier.align(androidx.compose.ui.Alignment.TopCenter))
             Column(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(6.dp), horizontalAlignment = androidx.compose.ui.Alignment.End) {
                 FilledTonalButton(onClick = vm::toggleFullscreen) { Text("Salir de pantalla completa") }
                 Text(state.curve.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
@@ -140,10 +142,23 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
 private fun ChartWithZoom(state: UiState, vm: AnalyzerViewModel, selected: Int?, onTap: (Int?) -> Unit, modifier: Modifier) {
     Box(modifier) {
         RtaChart(chartModelOf(state), Modifier.fillMaxSize(), selected, onTap)
+        NoSignalBanner(state, Modifier.align(androidx.compose.ui.Alignment.TopCenter))
         TextButton(onClick = vm::toggleFullscreen, modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)) {
             Text("⤢ Ampliar")
         }
     }
+}
+
+@Composable
+private fun NoSignalBanner(state: UiState, modifier: Modifier) {
+    if (state.frame == null || state.testSignal || state.settings.alwaysCompare) return
+    Text(
+        "Sin señal de prueba · escala absoluta (${state.settings.unit})\nReproduce ruido rosa por el sistema para ver la guía",
+        modifier = modifier.padding(top = 6.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = StatusWarning,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable
