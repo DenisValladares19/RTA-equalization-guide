@@ -25,7 +25,7 @@ class SettingsStore(context: Context) {
     }
 }
 
-/** User curves, one JSON file each (same format as targets/curves/*.json). */
+/** User curves, one JSON file each (same format as the curve JSON files in the guide). */
 class CurveStore(filesDir: File) {
     private val dir = File(filesDir, "curves").apply { mkdirs() }
 
