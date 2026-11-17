@@ -5,6 +5,10 @@
 > (la "curva ideal") y **te dice cuánta ganancia subir o bajar en cada frecuencia**
 > para que un equipo de audio profesional suene como debe.
 
+> **Estado (v0.1.0):** fases 0 a 6 implementadas (salvo los perfiles por modelo de teléfono
+> y el arrastre de puntos en el editor); de la fase 7, la detección de realimentación. Ver el detalle en la sección 4. Los motores de análisis y de curvas tienen
+> tests automáticos; la app Android se compila en GitHub Actions.
+
 ---
 
 ## 1. Visión
@@ -77,10 +81,9 @@ solo permiso `RECORD_AUDIO`) sirve como **referencia de arquitectura**:
 Estructura propuesta del repositorio:
 
 ```
-app/            → interfaz Android (Compose)
-audio/          → captura, generador de ruido rosa, calibración
-dsp/            → FFT multirresolución, ventanas, bandas de octava, promedios
-targets/        → curvas objetivo + cálculo de sugerencias de EQ (Kotlin puro, con tests)
+app/            → app Android (Compose): captura de audio, gráfico, pantallas, exportación
+dsp/            → FFT multirresolución, ventanas, bandas, promedios, ruido rosa, calibración, SPL (Kotlin puro, con tests)
+targets/        → curvas objetivo, sugerencias de EQ, EQ gráfico/paramétrico, sesiones (Kotlin puro, con tests)
 docs/guide/     → la guía de ecualización (el "manual de uso" profesional)
 ```
 
@@ -89,72 +92,74 @@ docs/guide/     → la guía de ecualización (el "manual de uso" profesional)
 ## 4. Fases
 
 ### Fase 0 — Cimientos (1 semana)
-- [ ] Crear el proyecto Android (Kotlin, Compose, minSdk 24).
-- [ ] Integración continua: compilación + tests en GitHub Actions.
-- [ ] Documento `docs/research/spectroid.md` con los hallazgos del análisis.
-- [ ] Definir el formato JSON de las curvas objetivo (ver §5).
+- [x] Crear el proyecto Android (Kotlin, Compose, minSdk 24) con módulos `dsp`, `targets` y `app`.
+- [x] Integración continua: compilación + tests en GitHub Actions.
+- [x] Documento `docs/research/spectroid.md` con los hallazgos del análisis.
+- [x] Definir el formato JSON de las curvas objetivo (ver §5).
 
 **Listo cuando:** la app compila en CI y abre una pantalla vacía.
 
 ### Fase 1 — Analizador base, al nivel de Spectroid (2–3 semanas)
-- [ ] Captura con `AudioRecord` (fuente `UNPROCESSED` con respaldo a `MIC`), selección de frecuencia de muestreo.
-- [ ] FFT multirresolución (512 puntos + N diezmados), ventanas Hann / Blackman-Harris / Flat-top.
-- [ ] Escala en dBFS, eje logarítmico de 20 Hz a 20 kHz, cuadrícula de dB.
-- [ ] Promedios: Rápido (≈125 ms), Lento (≈1 s), Infinito (acumulado hasta reiniciar).
-- [ ] Retención de máximos y botón de congelar.
-- [ ] Test: un tono de 1 kHz aparece en 1 kHz ±1 bin; el ruido blanco se ve plano en vista FFT.
+- [x] Captura con `AudioRecord` (fuente `UNPROCESSED`, con respaldo a `VOICE_RECOGNITION`, que en Android no lleva control automático de ganancia), selección de frecuencia de muestreo.
+- [x] FFT multirresolución (2048 puntos por defecto + 5 diezmados, configurable), ventanas Hann / Hamming / Blackman / Blackman-Harris / Flat-top / rectangular.
+- [x] Escala en dBFS, eje logarítmico de 20 Hz a 20 kHz, cuadrícula de dB.
+- [x] Promedios: Rápido (≈125 ms), Lento (≈1 s), Infinito (acumulado hasta reiniciar).
+- [x] Retención de máximos y botón de congelar.
+- [x] Tests: un tono de 1 kHz a escala completa lee 0 dBFS (±0,3 dB) en su banda; tonos de 25 Hz a 16 kHz leen su nivel (±0,5 dB), incluido el paso por los diezmados.
 
 **Listo cuando:** muestra el espectro en vivo con una precisión comparable a Spectroid.
 
 ### Fase 2 — Vista RTA profesional (2 semanas)
-- [ ] Agrupar bins en **bandas de 1/1, 1/3, 1/6 y 1/12 de octava** (frecuencias centrales ISO 266: 20, 25, 31,5, 40 … 20 000 Hz).
-- [ ] Vista de barras (RTA clásico) y vista de línea suavizada.
-- [ ] **Generador de ruido rosa** por la salida del teléfono (o al conectarlo a la mesa por cable), más exportación de un archivo WAV de ruido rosa para reproducirlo desde la consola.
-- [ ] Test: el ruido rosa generado se ve **plano** en la vista de 1/3 de octava (±1 dB).
+- [x] Agrupar bins en **bandas de 1/1, 1/3, 1/6 y 1/12 de octava** (frecuencias centrales ISO 266: 20, 25, 31,5, 40 … 20 000 Hz).
+- [x] Vista de barras (RTA clásico) y vista de línea suavizada.
+- [x] **Generador de ruido rosa** por la salida del teléfono (o al conectarlo a la mesa por cable), más exportación de un archivo WAV de ruido rosa para reproducirlo desde la consola.
+- [x] Test: el ruido rosa generado se ve **plano** en la vista de 1/3 de octava (±1,5 dB entre 31,5 Hz y 16 kHz con 30 s de promedio).
 
 **Listo cuando:** al reproducir ruido rosa por un sistema plano, la pantalla se ve plana.
 
 ### Fase 3 — La silueta: curvas objetivo (2–3 semanas) ⭐
-- [ ] Biblioteca de curvas incluidas (ver §5).
-- [ ] Dibujar la curva **detrás** del espectro como silueta sombreada, más la banda de tolerancia (±1,5 / ±3 / ±6 dB a elegir).
-- [ ] **Alineación de nivel:** la curva se "ancla" automáticamente al promedio medido entre 500 Hz y 2 kHz (o a una frecuencia que elijas), para comparar forma y no volumen.
-- [ ] Selector rápido de curva y vista comparativa (cambiar de curva y ver el espectro sobre cada una).
-- [ ] Colorear cada banda: verde = dentro de la tolerancia, ámbar = fuera por poco, rojo = fuera por mucho.
+- [x] Biblioteca de curvas incluidas (ver §5).
+- [x] Dibujar la curva **detrás** del espectro como silueta sombreada, más la banda de tolerancia (±1,5 / ±3 / ±6 dB a elegir).
+- [x] **Alineación de nivel:** la curva se "ancla" automáticamente al promedio medido entre 500 Hz y 2 kHz (o a una frecuencia que elijas), para comparar forma y no volumen.
+- [x] Selector rápido de curva y vista comparativa (cambiar de curva y ver el espectro sobre cada una).
+- [x] Colorear cada banda: verde = dentro de la tolerancia, ámbar = fuera por poco, rojo = fuera por mucho.
 
 **Listo cuando:** se puede elegir "PA en vivo" y ver al instante qué bandas sobran o faltan.
 
 ### Fase 4 — Guía de ecualización: cuánto subir o bajar (3 semanas) ⭐⭐
-- [ ] Cálculo por banda: `corrección = objetivo − medido` (sobre el promedio lento o infinito, nunca sobre el instantáneo).
-- [ ] **Reglas profesionales** aplicadas a la sugerencia:
+- [x] Cálculo por banda: `corrección = objetivo − medido` (sobre el promedio lento o infinito, nunca sobre el instantáneo).
+- [x] **Reglas profesionales** aplicadas a la sugerencia:
   - Preferir **recortes** sobre realces; limitar los realces (por defecto a +3 dB, configurable).
   - **No corregir valles estrechos y profundos** (cancelaciones de sala): se marcan como "problema acústico, no de EQ".
   - Ignorar bandas por debajo del límite del sistema (por ejemplo, < 40 Hz si no hay subwoofer) y por encima del rango fiable del micrófono.
   - Suavizar entre bandas vecinas para evitar "dientes de sierra".
-- [ ] **Salida para ecualizador gráfico de 31 bandas:** tabla `frecuencia → ganancia` redondeada a 0,5 dB.
-- [ ] **Salida para ecualizador paramétrico:** ajuste automático de 3 a 8 filtros (frecuencia, ganancia, Q) que aproximan la corrección.
-- [ ] **Vista previa:** la línea "medido + EQ sugerida" superpuesta, para ver cómo quedaría.
-- [ ] Tests unitarios del motor con casos conocidos (pico de sala de +6 dB en 125 Hz → sugiere un recorte de ≈−6 dB con Q de ≈4).
+- [x] **Salida para ecualizador gráfico de 31 bandas:** tabla `frecuencia → ganancia` redondeada a 0,5 dB.
+- [x] **Salida para ecualizador paramétrico:** ajuste automático de 3 a 8 filtros (frecuencia, ganancia, Q) que aproximan la corrección.
+- [x] **Vista previa:** la línea "medido + EQ sugerida" superpuesta, para ver cómo quedaría.
+- [x] Tests unitarios del motor con casos conocidos (pico de sala de +6 dB en 125 Hz → sugiere un recorte de ≈−6 dB con Q de ≈4).
 
 **Listo cuando:** en una medición real la app produce una tabla de 31 bandas que, aplicada, deja el espectro dentro de ±3 dB de la curva.
 
 ### Fase 5 — Medición fiable (2–3 semanas)
-- [ ] **Archivos de calibración de micrófono** (formato UMIK-1 / Dayton: `Hz  dB`) y perfiles por modelo de teléfono.
-- [ ] Soporte para **micrófono de medición USB** (UMIK-1, Dayton iMM-6 con adaptador).
-- [ ] **SPL calibrado** (calibrador de 94 dB o referencia manual) y ponderaciones Z / A / C.
-- [ ] **Promedio espacial:** medir en 3–8 posiciones del público y promediarlas (lo que hacen los ingenieros reales).
-- [ ] Avisos de calidad: señal saturada, nivel muy bajo, ruido de fondo alto.
+- [x] **Archivos de calibración de micrófono** (formato UMIK-1 / Dayton / REW: `Hz  dB`).
+- [ ] Perfiles de calibración por modelo de teléfono (requiere medir cada modelo contra un micrófono de referencia).
+- [x] Soporte para **micrófono de medición USB** (UMIK-1, Dayton iMM-6 con adaptador).
+- [x] **SPL calibrado** (calibrador de 94 dB o referencia manual) y ponderaciones Z / A / C.
+- [x] **Promedio espacial:** medir en 3–8 posiciones del público y promediarlas (lo que hacen los ingenieros reales).
+- [x] Avisos de calidad: señal saturada, nivel muy bajo, ruido de fondo alto.
 
 **Listo cuando:** con un micro calibrado, el SPL coincide con un sonómetro de referencia (±1 dB).
 
 ### Fase 6 — Flujo de trabajo y guardado (2 semanas)
-- [ ] Guardar sesiones (medición + curva + sugerencias + notas del lugar).
-- [ ] Comparación **antes / después** superpuesta.
-- [ ] **Editor de curvas propias:** arrastrar puntos o copiar la curva de una medición de referencia ("quiero que suene como este sistema").
-- [ ] Exportar en CSV, PNG del gráfico e informe PDF para el cliente o el técnico.
+- [x] Guardar sesiones (medición + curva + sugerencias + notas del lugar).
+- [x] Comparación **antes / después** superpuesta.
+- [x] **Editor de curvas propias:** editar los puntos numéricamente (con vista previa) o copiar la curva de una medición de referencia ("quiero que suene como este sistema").
+- [ ] Editar la curva arrastrando los puntos con el dedo sobre el gráfico.
+- [x] Exportar en CSV, PNG del gráfico e informe PDF para el cliente o el técnico.
 
 ### Fase 7 — Avanzado (futuro)
 - [ ] Medición de **función de transferencia** de dos canales (referencia + micrófono) con interfaz USB: fase, coherencia y retardo, como Smaart / REW.
-- [ ] Detección de **realimentación (feedback)** con sugerencia de filtro de muesca.
+- [x] Detección de **realimentación (feedback)** con sugerencia de filtro de muesca.
 - [ ] Alineación de retardo entre el sistema principal y los subwoofers o torres de retardo.
 - [ ] Control remoto de procesadores o mesas digitales (por ejemplo, OSC) para aplicar la EQ directamente.
 
