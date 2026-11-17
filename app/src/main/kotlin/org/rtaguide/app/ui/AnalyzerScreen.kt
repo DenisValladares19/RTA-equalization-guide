@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.rtaguide.app.AnalyzerViewModel
 import org.rtaguide.app.UiState
+import org.rtaguide.app.data.ChartStyle
 import org.rtaguide.dsp.AveragingMode
 import org.rtaguide.targets.CorrectionFlag
 import kotlin.math.ceil
@@ -33,26 +34,35 @@ import kotlin.math.ceil
 fun chartModelOf(state: UiState): ChartModel {
     val frame = state.frame
     val s = state.settings
-    val offset = state.displayOffsetDb
+    val guide = s.chartStyleEnum == ChartStyle.GUIDE
+    // Guide view: everything relative to the aligned target (0 dB = curve at its reference), like
+    // the classic GEQ/RTA guide screens (−9 … +21 dB).
+    val shift = if (guide) -(state.comparison?.offsetDb ?: 0.0) else 0.0
+    val offset = state.displayOffsetDb + shift
+    fun DoubleArray.shifted(by: Double) = DoubleArray(size) { this[it] + by }
     return ChartModel(
         bands = frame?.bands ?: emptyList(),
-        measuredDb = state.measuredDb,
+        measuredDb = state.measuredDb?.shifted(shift),
         statuses = state.comparison?.items?.map { it.status },
         curve = state.curve,
-        curveOffsetDb = state.comparison?.offsetDb ?: (s.yTopDb - 20),
+        curveOffsetDb = if (guide) 0.0 else state.comparison?.offsetDb ?: (s.yTopDb - 20),
         toleranceDb = state.comparison?.toleranceDb ?: state.curve.toleranceDb,
         showSilhouette = s.showSilhouette,
         fineHz = if (s.showFineSpectrum) frame?.fineHz else null,
-        fineDb = if (s.showFineSpectrum) frame?.fineDb?.let { db -> DoubleArray(db.size) { db[it] + offset } } else null,
-        maxHoldDb = if (s.showMaxHold) frame?.maxHoldDb?.let { db -> DoubleArray(db.size) { db[it] + offset } } else null,
-        referenceDb = state.referenceDb,
-        previewDb = state.previewDb,
+        fineDb = if (s.showFineSpectrum) frame?.fineDb?.shifted(offset) else null,
+        maxHoldDb = if (s.showMaxHold) frame?.maxHoldDb?.shifted(offset) else null,
+        referenceDb = state.referenceDb?.shifted(shift),
+        previewDb = state.previewDb?.shifted(shift),
         feedbackHz = frame?.feedback?.map { it.frequencyHz } ?: emptyList(),
-        yTopDb = s.yTopDb + offset,
-        yRangeDb = s.yRangeDb,
-        unit = s.unit,
+        yTopDb = if (guide) GUIDE_TOP_DB else s.yTopDb + state.displayOffsetDb,
+        yRangeDb = if (guide) GUIDE_RANGE_DB else s.yRangeDb,
+        unit = if (guide) "dB rel." else s.unit,
+        style = s.chartStyleEnum,
     )
 }
+
+const val GUIDE_TOP_DB = 21.0
+const val GUIDE_RANGE_DB = 30.0
 
 @Composable
 fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
@@ -130,7 +140,14 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Silueta") })
+            OptionSelector(
+                label = "",
+                options = ChartStyle.entries.toList(),
+                selected = s.chartStyleEnum,
+                labelOf = { it.label },
+                onSelect = { style -> vm.updateSettings { it.copy(chartStyle = style.name) } },
+            )
+            FilterChip(selected = s.showSilhouette, onClick = { vm.updateSettings { it.copy(showSilhouette = !it.showSilhouette) } }, label = { Text("Guía/silueta") })
             FilterChip(selected = s.showPreview, onClick = { vm.updateSettings { it.copy(showPreview = !it.showPreview) } }, label = { Text("Vista previa EQ") })
             FilterChip(selected = s.showFineSpectrum, onClick = { vm.updateSettings { it.copy(showFineSpectrum = !it.showFineSpectrum) } }, label = { Text("Línea FFT") })
             FilterChip(selected = s.showMaxHold, onClick = { vm.updateSettings { it.copy(showMaxHold = !it.showMaxHold) } }, label = { Text("Máximos") })
@@ -140,7 +157,7 @@ fun AnalyzerScreen(state: UiState, vm: AnalyzerViewModel) {
                 OutlinedButton(onClick = vm::removeLastPosition) { Text("Quitar última") }
                 OutlinedButton(onClick = vm::clearPositions) { Text("Borrar posiciones") }
             }
-            OutlinedButton(onClick = {
+            if (s.chartStyleEnum == ChartStyle.SILHOUETTE) OutlinedButton(onClick = {
                 val max = state.measuredDb?.maxOrNull() ?: return@OutlinedButton
                 val top = ceil((max - state.displayOffsetDb + 6) / 10) * 10
                 vm.updateSettings { it.copy(yTopDb = top) }

@@ -6,6 +6,7 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import org.rtaguide.app.data.ChartStyle
 import org.rtaguide.dsp.Band
 import org.rtaguide.targets.BandStatus
 import org.rtaguide.targets.TargetCurve
@@ -32,6 +33,8 @@ data class ChartModel(
     val yTopDb: Double = 0.0,
     val yRangeDb: Double = 70.0,
     val unit: String = "dBFS",
+    /** GUIDE: smoothed spectrum line over a green target band. SILHOUETTE: colored bars over a filled silhouette. */
+    val style: ChartStyle = ChartStyle.SILHOUETTE,
 )
 
 /**
@@ -49,6 +52,8 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         val COLOR_TARGET = Color.rgb(0x4F, 0xC3, 0xF7)
         val COLOR_PREVIEW = Color.rgb(0xE0, 0x40, 0xFB)
         val COLOR_REFERENCE = Color.rgb(0xFF, 0xFF, 0xFF)
+        val COLOR_GUIDE = Color.rgb(0x8B, 0xC3, 0x4A)
+        val COLOR_SPECTRUM = Color.rgb(0x6E, 0xC6, 0xFF)
     }
 
     private val fg = if (light) Color.rgb(0x22, 0x22, 0x22) else Color.rgb(0xEE, 0xEE, 0xEE)
@@ -78,6 +83,18 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         style = Paint.Style.STROKE; color = COLOR_PREVIEW; strokeWidth = 2f * density
     }
     private val feedbackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = COLOR_OUT }
+    private val guideFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = withAlpha(COLOR_GUIDE, 0x66) }
+    private val guideEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; color = withAlpha(COLOR_GUIDE, 0xCC); strokeWidth = 1.2f * density
+    }
+    private val guideCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; color = withAlpha(fg, 0x99); strokeWidth = 1f * density
+    }
+    private val spectrumPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; color = COLOR_SPECTRUM; strokeWidth = 2.2f * density
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val zeroPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = withAlpha(fg, 0x80); strokeWidth = 1.2f * density }
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; color = fg; strokeWidth = 1.5f * density
     }
@@ -110,10 +127,20 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
         canvas.save()
         canvas.clipRect(r)
         val curve = m.curve
-        if (curve != null && m.showSilhouette) drawSilhouette(canvas, r, m, curve)
-        drawBars(canvas, r, m)
-        m.fineDb?.let { db -> m.fineHz?.let { hz -> drawLine(canvas, r, m, hz, db, finePaint) } }
-        if (curve != null && m.showSilhouette) drawTargetLine(canvas, r, m, curve)
+        if (m.style == ChartStyle.GUIDE) {
+            if (0.0 in (m.yTopDb - m.yRangeDb)..m.yTopDb) {
+                val y0 = y(0.0, r, m)
+                canvas.drawLine(r.left, y0, r.right, y0, zeroPaint)
+            }
+            if (curve != null && m.showSilhouette) drawGuideBand(canvas, r, m, curve)
+            m.fineDb?.let { db -> m.fineHz?.let { hz -> drawLine(canvas, r, m, hz, db, finePaint) } }
+            m.measuredDb?.let { drawSmoothBandLine(canvas, r, m, it, spectrumPaint) }
+        } else {
+            if (curve != null && m.showSilhouette) drawSilhouette(canvas, r, m, curve)
+            drawBars(canvas, r, m)
+            m.fineDb?.let { db -> m.fineHz?.let { hz -> drawLine(canvas, r, m, hz, db, finePaint) } }
+            if (curve != null && m.showSilhouette) drawTargetLine(canvas, r, m, curve)
+        }
         m.maxHoldDb?.let { drawBandLine(canvas, r, m, it, holdPaint) }
         m.referenceDb?.let { drawBandLine(canvas, r, m, it, referencePaint) }
         m.previewDb?.let { drawBandLine(canvas, r, m, it, previewPaint) }
@@ -127,7 +154,7 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
 
     private fun drawGrid(canvas: Canvas, r: RectF, m: ChartModel) {
         val step = when {
-            m.yRangeDb <= 24 -> 3.0
+            m.yRangeDb <= 33 -> 3.0
             m.yRangeDb <= 48 -> 6.0
             else -> 10.0
         }
@@ -184,6 +211,42 @@ class ChartRenderer(private val density: Float, private val light: Boolean = fal
             close()
         }
         canvas.drawPath(band, tolerancePaint)
+    }
+
+    /** Green guide band (target ± tolerance) with a thin center line, as on hardware/plug-in RTA guides. */
+    private fun drawGuideBand(canvas: Canvas, r: RectF, m: ChartModel, curve: TargetCurve) {
+        val upper = curvePoints(r, m, curve, m.toleranceDb)
+        val lower = curvePoints(r, m, curve, -m.toleranceDb)
+        val band = Path().apply {
+            moveTo(upper.first().first, upper.first().second)
+            upper.forEach { lineTo(it.first, it.second) }
+            lower.asReversed().forEach { lineTo(it.first, it.second) }
+            close()
+        }
+        canvas.drawPath(band, guideFillPaint)
+        canvas.drawPath(polyline(upper), guideEdgePaint)
+        canvas.drawPath(polyline(lower), guideEdgePaint)
+        canvas.drawPath(polyline(curvePoints(r, m, curve, 0.0)), guideCenterPaint)
+    }
+
+    private fun polyline(points: List<Pair<Float, Float>>) = Path().apply {
+        moveTo(points.first().first, points.first().second)
+        points.drop(1).forEach { lineTo(it.first, it.second) }
+    }
+
+    /** Band levels joined with a smooth curve (quadratic segments through midpoints). */
+    private fun drawSmoothBandLine(canvas: Canvas, r: RectF, m: ChartModel, levels: DoubleArray, paint: Paint) {
+        val n = minOf(levels.size, m.bands.size)
+        if (n < 2) return
+        val xs = FloatArray(n) { x(m.bands[it].centerHz, r) }
+        val ys = FloatArray(n) { y(levels[it], r, m) }
+        val path = Path()
+        path.moveTo(xs[0], ys[0])
+        for (i in 1 until n - 1) {
+            path.quadTo(xs[i], ys[i], (xs[i] + xs[i + 1]) / 2, (ys[i] + ys[i + 1]) / 2)
+        }
+        path.lineTo(xs[n - 1], ys[n - 1])
+        canvas.drawPath(path, paint)
     }
 
     private fun drawTargetLine(canvas: Canvas, r: RectF, m: ChartModel, curve: TargetCurve) {

@@ -13,6 +13,7 @@ Son puntos de partida razonables, no leyes: ajústalas a tu gusto en la pestaña
 | Curva X (SMPTE ST 202) | Salas de cine grandes | Plana hasta 2 kHz y −3 dB/octava (−9 dB a 16 kHz) | ±3 dB |
 | PA en vivo / concierto | Rock, pop, directo | +9 dB en 40 Hz, +8 en 80, +3 en 150, plana de 300 Hz a 1 kHz, −4 dB a 10 kHz, −6 a 16 kHz | ±3 dB |
 | Club / electrónica | Discotecas, EDM | +12 dB en 40 Hz, +11 en 63, +6 en 100, medios planos, −5 dB a 12,5 kHz | ±3 dB |
+| Graves pronunciados (guía de directo) | Directo con mucho peso en graves | +16 dB en 31,5 Hz, +12,5 en 63, +6,5 en 125, +2,5 en 250, plana de 500 Hz a 16 kHz (≈ −3,5 dB/octava en graves) | ±2 dB |
 | Voz / iglesia / conferencias | Inteligibilidad | −12 dB en 20 Hz, −4 en 80, presencia +2,5 dB en 3,15 kHz, −6 dB a 12,5 kHz | ±3 dB |
 
 ### Por qué los agudos caen

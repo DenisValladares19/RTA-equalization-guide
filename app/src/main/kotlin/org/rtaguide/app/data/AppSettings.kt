@@ -18,6 +18,12 @@ enum class InputSource(val label: String, val androidSource: Int) {
     CAMCORDER("Videocámara", MediaRecorder.AudioSource.CAMCORDER),
 }
 
+/** How the analyzer chart is drawn. */
+enum class ChartStyle(val label: String) {
+    GUIDE("Guía (línea + banda verde)"),
+    SILHOUETTE("Barras + silueta"),
+}
+
 enum class PreviewSource(val label: String) {
     GRAPHIC("EQ gráfico"),
     PARAMETRIC("EQ paramétrico"),
@@ -40,15 +46,16 @@ data class AppSettings(
     val weighting: String = Weighting.Z.name,
     val splOffsetDb: Double? = null,
     val useCalibration: Boolean = true,
-    val curveId: String = BuiltInCurves.LIVE_PA.id,
+    val curveId: String = BuiltInCurves.BASS_GUIDE.id,
     val toleranceDb: Double? = null,
     val alignment: Alignment = Alignment(),
     val rules: EqRules = EqRules(),
     val graphicLayout: String = GraphicEqLayout.THIRTY_ONE.name,
     val maxParametricFilters: Int = 6,
-    val showFineSpectrum: Boolean = true,
+    val showFineSpectrum: Boolean = false,
     val showMaxHold: Boolean = false,
     val showSilhouette: Boolean = true,
+    val chartStyle: String = ChartStyle.GUIDE.name,
     val showPreview: Boolean = false,
     val previewSource: String = PreviewSource.GRAPHIC.name,
     val feedbackDetection: Boolean = false,
@@ -63,6 +70,7 @@ data class AppSettings(
     val weightingEnum: Weighting get() = enumOr(weighting, Weighting.Z)
     val graphicLayoutEnum: GraphicEqLayout get() = enumOr(graphicLayout, GraphicEqLayout.THIRTY_ONE)
     val previewSourceEnum: PreviewSource get() = enumOr(previewSource, PreviewSource.GRAPHIC)
+    val chartStyleEnum: ChartStyle get() = enumOr(chartStyle, ChartStyle.GUIDE)
 
     /** Unit shown on screen: dB SPL once a calibration offset exists. */
     val unit: String get() = if (splOffsetDb != null) "dB SPL" else "dBFS"

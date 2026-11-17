@@ -26,11 +26,15 @@ class TargetsTest {
 
     @Test
     fun builtInCurvesAreValidAndUnique() {
-        assertEquals(7, BuiltInCurves.ALL.size)
+        assertEquals(8, BuiltInCurves.ALL.size)
         assertEquals(BuiltInCurves.ALL.size, BuiltInCurves.ALL.map { it.id }.toSet().size)
         for (c in BuiltInCurves.ALL) assertEquals(0.0, c.gainAt(1000.0), 1e-9, c.id)
         // X curve: −3 dB/octave above 2 kHz.
         assertEquals(-6.0, BuiltInCurves.X_CURVE.gainAt(8000.0), 1e-9)
+        // Bass guide: +16 dB at 31.5 Hz, flat from 500 Hz up.
+        assertEquals(16.0, BuiltInCurves.BASS_GUIDE.relativeGainAt(31.5), 1e-9)
+        assertEquals(0.0, BuiltInCurves.BASS_GUIDE.relativeGainAt(8000.0), 1e-9)
+        assertEquals(4.5, BuiltInCurves.BASS_GUIDE.relativeGainAt(kotlin.math.sqrt(125.0 * 250.0)), 1e-9)
     }
 
     @Test

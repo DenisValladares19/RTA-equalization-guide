@@ -143,7 +143,23 @@ object BuiltInCurves {
         builtIn = true,
     )
 
-    val ALL: List<TargetCurve> = listOf(FLAT, STUDIO, HARMAN_ROOM, X_CURVE, LIVE_PA, CLUB, SPEECH)
+    /**
+     * Popular live-sound guide (as seen on graphic-EQ/RTA tutorials): strong low end that falls
+     * ≈3.5 dB/octave from 31.5 Hz to 500 Hz, then flat up to 16 kHz, with a narrow ±2 dB band.
+     */
+    val BASS_GUIDE = TargetCurve(
+        id = "graves-pronunciados",
+        name = "Graves pronunciados (guía de directo)",
+        description = "Graves +16 dB en 31,5 Hz que bajan ≈3,5 dB/octava hasta 500 Hz; plana de 500 Hz a 16 kHz. Banda estrecha de ±2 dB.",
+        toleranceDb = 2.0,
+        points = listOf(
+            p(20.0, 18.5), p(31.5, 16.0), p(63.0, 12.5), p(125.0, 6.5), p(250.0, 2.5),
+            p(500.0, 0.0), p(1000.0, 0.0), p(16000.0, 0.0), p(20000.0, 0.0),
+        ),
+        builtIn = true,
+    )
+
+    val ALL: List<TargetCurve> = listOf(FLAT, STUDIO, HARMAN_ROOM, X_CURVE, LIVE_PA, CLUB, SPEECH, BASS_GUIDE)
 
     fun byId(id: String): TargetCurve? = ALL.firstOrNull { it.id == id }
 }
